@@ -205,7 +205,13 @@ def call_cuit_masivo(base_url: str, headers: Dict[str, str], payload: Dict[str, 
 def call_create_user_api(base_url: str, payload: Dict[str, Any], timeout_sec: int = 60) -> Dict[str, Any]:
     """
     Crea un nuevo usuario enviando un correo con la API key.
-    Endpoint: POST /api/v1/user/
+
+    Según la especificación de la API, el endpoint
+    `/api/v1/user/` recibe un cuerpo JSON con un único campo `mail`
+    (la dirección de correo del nuevo usuario). Si se envían claves
+    adicionales (por ejemplo, `email`), el servidor podría ignorarlas o
+    devolver un error de validación. Por ello se recomienda construir
+    `payload` como `{"mail": "usuario@example.com"}`.
     """
     url = ensure_trailing_slash(base_url) + "api/v1/user/"
     try:
@@ -221,11 +227,33 @@ def call_create_user_api(base_url: str, payload: Dict[str, Any], timeout_sec: in
 def call_reset_api_key(base_url: str, payload: Dict[str, Any], timeout_sec: int = 60) -> Dict[str, Any]:
     """
     Resetea la API key de un usuario y envía la nueva clave por correo.
-    Endpoint: POST /api/v1/user/reset-key/
+
+    De acuerdo con la especificación OpenAPI de https://api-bots.mrbot.com.ar/, el
+    endpoint `/api/v1/user/reset-key/` acepta el correo electrónico como parámetro
+    de consulta (`email`) y **no** espera un cuerpo JSON. La implementación
+    anterior enviaba el correo en el JSON, lo cual hacía que el servidor
+    respondiera con un error de validación. Esta versión extrae la dirección de
+    correo del diccionario `payload` (aceptando tanto la clave `mail` como
+    `email`) y la envía en la cadena de consulta.
+
+    :param base_url: URL base de la API, por ejemplo "https://api-bots.mrbot.com.ar/".
+    :param payload: Diccionario con la dirección de correo del usuario. Puede
+        contener la clave "mail" o "email".
+    :param timeout_sec: Tiempo máximo de espera para la solicitud.
+    :return: Un diccionario con el código de estado HTTP y los datos devueltos
+        por el servidor.
     """
     url = ensure_trailing_slash(base_url) + "api/v1/user/reset-key/"
+    # Extraer el email desde el payload. Algunos formularios utilizan la clave
+    # "mail" y otros "email"; se soportan ambos.
+    email_param = None
+    if isinstance(payload, dict):
+        email_param = payload.get("email") or payload.get("mail")
+    # Construir parámetros de consulta sólo si se proporciona un correo.
+    params: Optional[Dict[str, str]] = {"email": email_param} if email_param else None
     try:
-        resp = requests.post(url, json=payload, timeout=timeout_sec)
+        # No se envía un cuerpo JSON; solo parámetros de consulta.
+        resp = requests.post(url, params=params, timeout=timeout_sec)
         try:
             data = resp.json()
         except Exception:
