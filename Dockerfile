@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Correr la aplicación 
-CMD streamlit run api_bots_clientes.py
+CMD streamlit run cliente_api_mrbot.py
