@@ -1,7 +1,8 @@
 services:
 
-  cliente_api_mrbot:
-    container_name: abustosp/cliente_api_mrbot
+  cliente-api-mrbot:
+    image: abustosp/cliente-api-mrbot
+    container_name: cliente-api-mrbot
     build: .
     ports:
       - "8501:8501"
