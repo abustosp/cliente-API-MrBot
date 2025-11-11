@@ -1,0 +1,12 @@
+services:
+
+  cliente_api_mrbot:
+    container_name: abustosp/cliente_api_mrbot
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    command: python app.py
