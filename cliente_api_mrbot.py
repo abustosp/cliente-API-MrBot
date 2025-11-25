@@ -24,8 +24,8 @@ except Exception:
 # =========================
 # CONFIGURACIÓN BÁSICA UI
 # =========================
-st.set_page_config(page_title="Mis Comprobantes - Herramientas", page_icon="🧾", layout="wide")
-st.title("🧾 Mis Comprobantes API — Herramientas")
+st.set_page_config(page_title="BOTs de Mrbot", page_icon="🧾", layout="wide")
+st.title("BOTs de Mrbot")
 st.caption("Consultas masivas, estado de consultas, descarga desde S3/MinIO y consolidación final de archivos.")
 
 # =========================
@@ -441,11 +441,15 @@ def build_zip_with_excels(df_emitidos: pd.DataFrame, df_recibidos: pd.DataFrame)
 # =========================
 # TABS (nueva estructura)
 # =========================
-# Definir las solapas principales: Mis Comprobantes, Usuarios y Otros endpoints.
-tab_mis_comprobantes, tab_users, tab_other = st.tabs([
-    "Mis Comprobantes",
+# Definir las solapas principales en el nuevo orden solicitado.
+tab_users, tab_mis_comprobantes, tab_other1, tab_other2, tab_other3, tab_other4, tab_other5 = st.tabs([
     "Usuarios",
-    "Otros endpoints"
+    "Mis Comprobantes",
+    "RCEL",
+    "SCT",
+    "CCMA",
+    "APOC",
+    "Consulta de Constancia de CUIT"
 ])
 
 # Crear sub-solapas dentro de "Mis Comprobantes" que corresponden a las funcionalidades
@@ -473,7 +477,9 @@ tab1 = subtab_mc_consulta
 tab2 = subtab_user_consultas
 tab3 = subtab_mc_descarga_zip
 tab4 = subtab_mc_consolidar
-tab5 = tab_other
+# tab5 ya no existe (antes agrupaba otros endpoints). Se mantienen referencias más abajo directamente a cada tab específico.
+# Si se requiere una agrupación futura, crear una lista o dict.
+# Eliminado: tab5 = tab_other
 
 # Contenido adicional para las solapas de Usuarios (crear y resetear usuarios).
 with subtab_user_create:
@@ -781,16 +787,22 @@ with tab4:
 # -------------------------------------------------------------------
 # TAB 5: Otros endpoints (Comprobantes en Línea, SCT, CCMA, Apócrifos, Consulta de CUIT)
 # -------------------------------------------------------------------
-with tab5:
-    st.subheader("5) Otros endpoints de la API")
-    # Crear sub-tabs para cada endpoint específico
-    subtab_rcel, subtab_sct, subtab_ccma, subtab_apoc, subtab_cuit = st.tabs([
-        "Comprobantes en Línea (RCEL)",
-        "Sistema de Cuentas Tributarias (SCT)",
-        "CCMA (Monotributistas/Autónomos)",
-        "Consulta Apócrifos",
-        "Consulta de CUIT"
-    ])
+# Ajuste: cada endpoint ahora es su propia solapa principal.
+with tab_other1:
+    st.subheader("RCEL")
+    subtab_rcel = tab_other1  # Reutilizar variable para el contenido existente
+with tab_other2:
+    st.subheader("SCT")
+    subtab_sct = tab_other2
+with tab_other3:
+    st.subheader("CCMA")
+    subtab_ccma = tab_other3
+with tab_other4:
+    st.subheader("APOC")
+    subtab_apoc = tab_other4
+with tab_other5:
+    st.subheader("Consulta de Constancia de CUIT")
+    subtab_cuit = tab_other5
 
     # -------------------------------------------------------------
     # Subtab: Comprobantes en Línea (RCEL)
