@@ -24,7 +24,10 @@ except Exception:
 # =========================
 # CONFIGURACIÓN BÁSICA UI
 # =========================
-st.set_page_config(page_title="BOTs de Mrbot", page_icon="🧾", layout="wide")
+st.set_page_config(
+    page_title="BOTs de Mrbot",
+    page_icon="static/ABP.png",
+    layout="wide")
 st.title("BOTs de Mrbot")
 st.caption("Consultas masivas, estado de consultas, descarga desde S3/MinIO y consolidación final de archivos.")
 
