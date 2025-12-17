@@ -95,6 +95,165 @@ def call_consultas_disponibles(base_url: str, email_path: str, headers: Dict[str
     except Exception as e:
         return None, None, None, f"Error de conexión: {e}"
 
+# -------------------------------------------------------------
+# UTILIDADES CCMA (parseo de montos, movimientos y Excel)
+# -------------------------------------------------------------
+CCMA_NUMERIC_FIELDS = [
+    "deuda_capital",
+    "deuda_accesorios",
+    "total_deuda",
+    "credito_capital",
+    "credito_accesorios",
+    "total_a_favor",
+]
+
+CCMA_MOV_COLUMNS = [
+    "cuit_representante",
+    "cuit_representado",
+    "periodo",
+    "impuesto",
+    "concepto",
+    "subconcepto",
+    "descripcion",
+    "fecha_movimiento",
+    "debe",
+    "haber",
+]
+
+
+def parse_bool_cell(value: Any, default: bool = False) -> bool:
+    """
+    Normaliza valores provenientes de Excel (sí/no, 1/0, true/false).
+    Si no coincide con ningún valor conocido, retorna el default.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text == "":
+        return default
+    if text in {"1", "true", "t", "yes", "y", "si", "sí", "s"}:
+        return True
+    if text in {"0", "false", "f", "no", "n"}:
+        return False
+    return default
+
+
+def parse_amount(value: Any) -> Optional[float]:
+    """
+    Convierte strings con separador de miles y decimal a float.
+    Admite formatos tipo 22,307.22 (coma miles, punto decimal) y 22.307,22.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace("\xa0", "").replace(" ", "")
+    if text == "":
+        return None
+    try:
+        if "," in text and "." in text:
+            if text.rfind(".") > text.rfind(","):
+                text = text.replace(",", "")
+            else:
+                text = text.replace(".", "").replace(",", ".")
+        elif "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        return float(text)
+    except Exception:
+        return None
+
+
+def normalize_ccma_response(http_status: Optional[int], data: Any, cuit_rep: str, cuit_repr: str,
+                            movimientos_flag: bool) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Extrae campos útiles del response de CCMA y opcionalmente los movimientos.
+    Devuelve (row_resumen, lista_movimientos).
+    """
+    resumen_row: Dict[str, Any] = {
+        "cuit_representante": cuit_rep,
+        "cuit_representado": cuit_repr,
+        "http_status": http_status,
+        "movimientos_solicitados": bool(movimientos_flag),
+        "response_json": None,
+        "error": None
+    }
+    movimientos_rows: List[Dict[str, Any]] = []
+    if http_status == 200 and isinstance(data, dict):
+        response_obj = data.get("response_ccma", data)
+        status_field = data.get("status")
+        error_message = data.get("error_message")
+        if status_field is not None:
+            resumen_row["status"] = status_field
+        if error_message is not None:
+            resumen_row["error_message"] = error_message
+        if isinstance(response_obj, dict):
+            resumen_row.update({
+                "cuit": response_obj.get("cuit"),
+                "periodo": response_obj.get("periodo"),
+                "deuda_capital": response_obj.get("deuda_capital"),
+                "deuda_accesorios": response_obj.get("deuda_accesorios"),
+                "total_deuda": response_obj.get("total_deuda"),
+                "credito_capital": response_obj.get("credito_capital"),
+                "credito_accesorios": response_obj.get("credito_accesorios"),
+                "total_a_favor": response_obj.get("total_a_favor"),
+            })
+            resumen_row["response_json"] = json.dumps({"response_ccma": response_obj}, ensure_ascii=False)
+            for field in CCMA_NUMERIC_FIELDS:
+                if field in resumen_row:
+                    resumen_row[field] = parse_amount(resumen_row[field])
+            if movimientos_flag:
+                movimientos_list = response_obj.get("movimientos")
+                if isinstance(movimientos_list, list):
+                    for mov in movimientos_list:
+                        if not isinstance(mov, dict):
+                            continue
+                        mov_row = {
+                            "cuit_representante": cuit_rep,
+                            "cuit_representado": cuit_repr or response_obj.get("cuit"),
+                        }
+                        mov_row.update(mov)
+                        for monto_col in ("debe", "haber"):
+                            if monto_col in mov_row:
+                                mov_row[monto_col] = parse_amount(mov_row[monto_col])
+                        movimientos_rows.append(mov_row)
+        else:
+            resumen_row["response_json"] = json.dumps(data, ensure_ascii=False)
+    else:
+        resumen_row["error"] = json.dumps({"http_status": http_status, "data": data}, ensure_ascii=False)
+    return resumen_row, movimientos_rows
+
+
+def build_ccma_outputs(resumen_rows: List[Dict[str, Any]], movimientos_rows: List[Dict[str, Any]],
+                       movimientos_requested: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    resumen_df = pd.DataFrame(resumen_rows)
+    for col in CCMA_NUMERIC_FIELDS:
+        if col in resumen_df.columns:
+            resumen_df[col] = resumen_df[col].apply(parse_amount)
+    movimientos_df = pd.DataFrame(movimientos_rows)
+    if movimientos_df.empty and movimientos_requested:
+        movimientos_df = pd.DataFrame(columns=CCMA_MOV_COLUMNS)
+    if not movimientos_df.empty:
+        mov_cols = [c for c in CCMA_MOV_COLUMNS if c in movimientos_df.columns]
+        otros_cols = [c for c in movimientos_df.columns if c not in mov_cols]
+        movimientos_df = movimientos_df[mov_cols + otros_cols]
+        for monto_col in ("debe", "haber"):
+            if monto_col in movimientos_df.columns:
+                movimientos_df[monto_col] = movimientos_df[monto_col].apply(parse_amount)
+    return resumen_df, movimientos_df
+
+
+def build_ccma_excel(resumen_df: pd.DataFrame, movimientos_df: pd.DataFrame,
+                     include_movements_sheet: bool) -> bytes:
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        resumen_df.to_excel(writer, index=False, sheet_name="CCMA")
+        if include_movements_sheet or not movimientos_df.empty:
+            movimientos_df.to_excel(writer, index=False, sheet_name="Movimientos")
+    buf.seek(0)
+    return buf.read()
+
 # -------------------------------------------------------------------
 # NUEVAS FUNCIONES DE LLAMADA PARA OTROS ENDPOINTS
 # Estas funciones encapsulan las llamadas HTTP a los distintos servicios disponibles
@@ -1060,11 +1219,18 @@ with tab5:
     with subtab_ccma:
         st.markdown("### Cuenta Corriente de Monotributistas y Autónomos (CCMA)")
         st.write(
-            "Consulta la cuenta corriente de uno o varios contribuyentes. "
-            "Seleccioná el modo de consulta individual o masivo."
+            "Consulta la cuenta corriente de uno o varios contribuyentes y descargá los movimientos con montos formateados "
+            "(debe/haber, saldos) listos para Excel."
         )
         ccma_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="ccma_mode")
-        ccma_proxy = st.checkbox("Usar proxy_request", value=False, key="ccma_proxy_option")
+        col_ccma_flags = st.columns(2)
+        with col_ccma_flags[0]:
+            ccma_proxy = st.checkbox("Usar proxy_request", value=False, key="ccma_proxy_option")
+        with col_ccma_flags[1]:
+            ccma_movimientos = st.checkbox(
+                "Solicitar movimientos", value=True, key="ccma_movimientos_option",
+                help="Incluye movimientos y saldos formateados en la salida."
+            )
         if ccma_mode == "Individual":
             ccma_cuit_rep = st.text_input("CUIT del representante", value="", key="ccma_cuit_rep_ind")
             ccma_clave_rep = st.text_input("Clave fiscal del representante", value="", type="password", key="ccma_clave_rep_ind")
@@ -1078,17 +1244,41 @@ with tab5:
                         "cuit_representante": ccma_cuit_rep.strip(),
                         "clave_representante": ccma_clave_rep,
                         "cuit_representado": ccma_cuit_repr.strip(),
-                        "proxy_request": bool(ccma_proxy)
+                        "proxy_request": bool(ccma_proxy),
+                        "movimientos": bool(ccma_movimientos)
                     }
                     with st.spinner("Consultando CCMA..."):
                         resp_ccma = call_ccma_consulta(base_url, headers_local, payload_ccma)
                     st.info(f"HTTP status: {resp_ccma.get('http_status')}")
-                    st.json(resp_ccma.get("data"))
+                    data_ccma = resp_ccma.get("data")
+                    st.json(data_ccma)
+                    resumen_row, movimientos_rows = normalize_ccma_response(
+                        resp_ccma.get("http_status"),
+                        data_ccma,
+                        ccma_cuit_rep.strip(),
+                        ccma_cuit_repr.strip(),
+                        ccma_movimientos
+                    )
+                    resumen_df, movimientos_df = build_ccma_outputs([resumen_row], movimientos_rows, ccma_movimientos)
+                    st.write("### Resultado formateado CCMA (vista previa)")
+                    st.dataframe(resumen_df, use_container_width=True)
+                    if ccma_movimientos or not movimientos_df.empty:
+                        st.write("### Movimientos formateados (vista previa)")
+                        st.dataframe(movimientos_df.head(50), use_container_width=True)
+                    excel_ccma = build_ccma_excel(resumen_df, movimientos_df, include_movements_sheet=ccma_movimientos)
+                    st.download_button(
+                        label="⬇️ Descargar Excel CCMA (resumen y movimientos)",
+                        data=excel_ccma,
+                        file_name=f"ccma_{date.today().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_ccma_ind"
+                    )
         else:
             st.markdown("#### Consulta masiva CCMA")
             st.write(
                 "Subí un archivo Excel (.xlsx) con las columnas **cuit_representante**, **clave_representante** y "
-                "**cuit_representado**. Para cada fila se enviará una solicitud."
+                "**cuit_representado**. Para cada fila se enviará una solicitud. "
+                "Opcional: columna **movimientos** para indicar Sí/No por fila y **procesar** para saltear filas."
             )
             ccma_file = st.file_uploader("Archivo Excel con contribuyentes", type=["xlsx"], key="ccma_file_upload")
             if ccma_file is not None:
@@ -1103,15 +1293,28 @@ with tab5:
                 if missing:
                     st.error(f"El Excel cargado no tiene las columnas requeridas: {', '.join(missing)}")
                 else:
+                    if "procesar" in df_ccma.columns:
+                        df_ccma = df_ccma[df_ccma["procesar"].apply(lambda v: parse_bool_cell(v, default=True))]
+                    df_ccma = df_ccma[
+                        (df_ccma["cuit_representante"].str.strip() != "") &
+                        (df_ccma["clave_representante"].str.strip() != "") &
+                        (df_ccma["cuit_representado"].str.strip() != "")
+                    ].copy()
                     st.success(f"Filas leídas: {len(df_ccma)}")
                     with st.expander("👀 Vista previa (primeras filas)"):
                         st.dataframe(df_ccma.head(10), use_container_width=True)
-                    if st.button("Procesar consultas CCMA", key="btn_ccma_masivo"):
+                    if df_ccma.empty:
+                        st.warning("No hay filas válidas para procesar.")
+                    elif st.button("Procesar consultas CCMA", key="btn_ccma_masivo"):
                         headers_local = build_headers(x_api_key, header_email)
-                        out_rows_ccma = []
+                        resumen_rows_ccma: List[Dict[str, Any]] = []
+                        movimientos_rows_ccma: List[Dict[str, Any]] = []
+                        movimientos_requested_any = False
                         progress = st.progress(0)
                         status_ph = st.empty()
                         for idx, row in df_ccma.reset_index(drop=True).iterrows():
+                            movimientos_flag = parse_bool_cell(row.get("movimientos"), default=ccma_movimientos)
+                            movimientos_requested_any = movimientos_requested_any or movimientos_flag
                             status_ph.info(
                                 f"Procesando {idx+1}/{len(df_ccma)} — CUIT {row['cuit_representado']}"
                             )
@@ -1119,29 +1322,38 @@ with tab5:
                                 "cuit_representante": row["cuit_representante"].strip(),
                                 "clave_representante": row["clave_representante"],
                                 "cuit_representado": row["cuit_representado"].strip(),
-                                "proxy_request": bool(ccma_proxy)
+                                "proxy_request": bool(ccma_proxy),
+                                "movimientos": movimientos_flag
                             }
                             resp = call_ccma_consulta(base_url, headers_local, payload_ccma)
                             http_status = resp.get("http_status")
                             data = resp.get("data", {})
-                            status_field = None
-                            error_message = None
-                            if isinstance(data, dict):
-                                status_field = data.get("status")
-                                error_message = data.get("error_message")
-                            out_rows_ccma.append({
-                                "cuit_representante": row["cuit_representante"],
-                                "cuit_representado": row["cuit_representado"],
-                                "http_status": http_status,
-                                "status": status_field,
-                                "error_message": error_message
-                            })
+                            resumen_row, movimientos_rows = normalize_ccma_response(
+                                http_status,
+                                data,
+                                row["cuit_representante"].strip(),
+                                row["cuit_representado"].strip(),
+                                movimientos_flag
+                            )
+                            resumen_rows_ccma.append(resumen_row)
+                            movimientos_rows_ccma.extend(movimientos_rows)
                             progress.progress(int((idx + 1) / len(df_ccma) * 100))
                         status_ph.success("Procesamiento finalizado.")
-                        result_ccma_df = pd.DataFrame(out_rows_ccma)
+                        result_ccma_df, movimientos_df = build_ccma_outputs(
+                            resumen_rows_ccma,
+                            movimientos_rows_ccma,
+                            movimientos_requested_any
+                        )
                         st.write("### Resultado de consultas CCMA (vista previa)")
                         st.dataframe(result_ccma_df.head(50), use_container_width=True)
-                        xlsx_bytes = make_output_excel(result_ccma_df, sheet_name="CCMA_Masivo")
+                        if movimientos_requested_any or not movimientos_df.empty:
+                            st.write("### Movimientos devueltos (vista previa)")
+                            st.dataframe(movimientos_df.head(50), use_container_width=True)
+                        xlsx_bytes = build_ccma_excel(
+                            result_ccma_df,
+                            movimientos_df,
+                            include_movements_sheet=movimientos_requested_any
+                        )
                         st.download_button(
                             label="⬇️ Descargar Excel de resultados CCMA",
                             data=xlsx_bytes,
