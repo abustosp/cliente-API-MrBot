@@ -12,6 +12,7 @@ services:
     #   - ./:/app
     networks:
       - nginx_default
+    restart: always
 
 networks:
   nginx_default:
