@@ -360,6 +360,86 @@ def call_cuit_masivo(base_url: str, headers: Dict[str, str], payload: Dict[str, 
     except Exception as e:
         return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
 
+def call_mis_retenciones_consulta(base_url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_sec: int = 120) -> Dict[str, Any]:
+    """
+    Consulta el endpoint Mis Retenciones (/api/v1/mis_retenciones/consulta).
+    Retorna el status HTTP y el JSON recibido.
+    """
+    url = ensure_trailing_slash(base_url) + "api/v1/mis_retenciones/consulta"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw_text": resp.text}
+        return {"http_status": resp.status_code, "data": data}
+    except Exception as e:
+        return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
+
+def call_sifere_consulta(base_url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_sec: int = 600) -> Dict[str, Any]:
+    """
+    Consulta el endpoint SIFERE (/api/v1/sifere/consulta).
+    Retorna el status HTTP y el JSON recibido.
+    """
+    url = ensure_trailing_slash(base_url) + "api/v1/sifere/consulta"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw_text": resp.text}
+        return {"http_status": resp.status_code, "data": data}
+    except Exception as e:
+        return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
+
+def call_declaracion_en_linea_consulta(base_url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_sec: int = 120) -> Dict[str, Any]:
+    """
+    Consulta el endpoint Declaración en Línea (/api/v1/declaracion-en-linea/consulta).
+    Retorna el status HTTP y el JSON recibido.
+    """
+    url = ensure_trailing_slash(base_url) + "api/v1/declaracion-en-linea/consulta"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw_text": resp.text}
+        return {"http_status": resp.status_code, "data": data}
+    except Exception as e:
+        return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
+
+def call_mis_facilidades_consulta(base_url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_sec: int = 600) -> Dict[str, Any]:
+    """
+    Consulta el endpoint Mis Facilidades (/api/v1/mis_facilidades/consulta).
+    Retorna el status HTTP y el JSON recibido.
+    """
+    url = ensure_trailing_slash(base_url) + "api/v1/mis_facilidades/consulta"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw_text": resp.text}
+        return {"http_status": resp.status_code, "data": data}
+    except Exception as e:
+        return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
+
+def call_aportes_en_linea_consulta(base_url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_sec: int = 120) -> Dict[str, Any]:
+    """
+    Consulta el endpoint Aportes en Línea (/api/v1/aportes-en-linea/consulta).
+    Retorna el status HTTP y el JSON recibido.
+    """
+    url = ensure_trailing_slash(base_url) + "api/v1/aportes-en-linea/consulta"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_sec)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw_text": resp.text}
+        return {"http_status": resp.status_code, "data": data}
+    except Exception as e:
+        return {"http_status": None, "data": {"success": False, "message": f"Error de conexión: {e}"}}
+
 # -------------------------------------------------------------
 # NUEVAS FUNCIONES PARA GESTIÓN DE USUARIOS
 # Estas funciones encapsulan la creación de usuarios y el reseteo de la API key.
@@ -471,6 +551,10 @@ def get_filename_from_headers(resp: requests.Response) -> Optional[str]:
         return sanitize_filename(m.group(1))
     return None
 
+def normalize_contributor_id(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    return text if text else "sin_identificar"
+
 def is_zip_bytes(b: bytes, content_type: Optional[str], fallback_name: Optional[str]) -> bool:
     if content_type and "zip" in content_type.lower():
         return True
@@ -489,23 +573,48 @@ def write_unique(zf: zipfile.ZipFile, arcname: str, data: bytes) -> str:
     zf.writestr(candidate, data)
     return candidate
 
-def download_to_zip(urls_emitidos: List[str], urls_recibidos: List[str], timeout_sec: int = 120) -> Tuple[bytes, pd.DataFrame]:
+def download_to_zip(
+    urls_emitidos: List[Any],
+    urls_recibidos: List[Any],
+    timeout_sec: int = 120,
+    extract_zips: bool = True
+) -> Tuple[bytes, pd.DataFrame]:
     log_rows = []
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         def process_list(urls, carpeta, tipo):
-            for url in urls:
-                if not url or not isinstance(url, str):
+            for item in urls:
+                url = ""
+                contrib = ""
+                extract_flag = extract_zips
+                if isinstance(item, dict):
+                    url = str(item.get("url") or "")
+                    contrib = str(item.get("contribuyente") or "")
+                    if "extract" in item:
+                        extract_flag = bool(item.get("extract"))
+                elif isinstance(item, str):
+                    url = item
+                if not url:
                     continue
                 try:
                     r = requests.get(url, timeout=timeout_sec, stream=True)
                     if r.status_code != 200:
-                        log_rows.append({"tipo": tipo, "url": url, "estado": "error_http", "detalle": f"HTTP {r.status_code}"})
+                        log_rows.append({
+                            "tipo": tipo,
+                            "contribuyente": contrib,
+                            "url": url,
+                            "estado": "error_http",
+                            "detalle": f"HTTP {r.status_code}"
+                        })
                         continue
                     fname = get_filename_from_headers(r) or infer_filename_from_url(url)
                     ctype = r.headers.get("Content-Type", "")
                     content = r.content
-                    if is_zip_bytes(content, ctype, fname):
+                    target_dir = carpeta
+                    if contrib:
+                        contrib_id = normalize_contributor_id(contrib)
+                        target_dir = os.path.join(carpeta, sanitize_filename(contrib_id))
+                    if extract_flag and is_zip_bytes(content, ctype, fname):
                         try:
                             with zipfile.ZipFile(BytesIO(content)) as inzip:
                                 had_file = False
@@ -515,34 +624,327 @@ def download_to_zip(urls_emitidos: List[str], urls_recibidos: List[str], timeout
                                     try:
                                         raw = inzip.read(zi.filename)
                                     except Exception as e:
-                                        log_rows.append({"tipo": tipo, "url": url, "estado": "error_lectura_zip", "detalle": f"{zi.filename}: {e}"})
+                                        log_rows.append({
+                                            "tipo": tipo,
+                                            "contribuyente": contrib,
+                                            "url": url,
+                                            "estado": "error_lectura_zip",
+                                            "detalle": f"{zi.filename}: {e}"
+                                        })
                                         continue
                                     inner_name = sanitize_filename(os.path.basename(zi.filename)) or "archivo"
-                                    arcname = os.path.join(carpeta, inner_name)
+                                    arcname = os.path.join(target_dir, inner_name)
                                     final_name = write_unique(zf, arcname, raw)
                                     had_file = True
-                                    log_rows.append({"tipo": tipo, "url": url, "estado": "ok_extraido", "detalle": final_name})
+                                    log_rows.append({
+                                        "tipo": tipo,
+                                        "contribuyente": contrib,
+                                        "url": url,
+                                        "estado": "ok_extraido",
+                                        "detalle": final_name
+                                    })
                                 if not had_file:
-                                    log_rows.append({"tipo": tipo, "url": url, "estado": "zip_vacio", "detalle": fname})
+                                    log_rows.append({
+                                        "tipo": tipo,
+                                        "contribuyente": contrib,
+                                        "url": url,
+                                        "estado": "zip_vacio",
+                                        "detalle": fname
+                                    })
                         except zipfile.BadZipFile:
-                            arcname = os.path.join(carpeta, fname or "archivo")
+                            arcname = os.path.join(target_dir, fname or "archivo")
                             final_name = write_unique(zf, arcname, content)
-                            log_rows.append({"tipo": tipo, "url": url, "estado": "ok_archivo", "detalle": final_name})
+                            log_rows.append({
+                                "tipo": tipo,
+                                "contribuyente": contrib,
+                                "url": url,
+                                "estado": "ok_archivo",
+                                "detalle": final_name
+                            })
                     else:
-                        arcname = os.path.join(carpeta, fname or "archivo")
+                        arcname = os.path.join(target_dir, fname or "archivo")
                         final_name = write_unique(zf, arcname, content)
-                        log_rows.append({"tipo": tipo, "url": url, "estado": "ok_archivo", "detalle": final_name})
+                        log_rows.append({
+                            "tipo": tipo,
+                            "contribuyente": contrib,
+                            "url": url,
+                            "estado": "ok_archivo",
+                            "detalle": final_name
+                        })
                 except Exception as e:
-                    log_rows.append({"tipo": tipo, "url": url, "estado": "error", "detalle": str(e)})
+                    log_rows.append({
+                        "tipo": tipo,
+                        "contribuyente": contrib,
+                        "url": url,
+                        "estado": "error",
+                        "detalle": str(e)
+                    })
         process_list(urls_emitidos, "Emitidos", "emitido")
         process_list(urls_recibidos, "Recibidos", "recibido")
     zip_buffer.seek(0)
     return zip_buffer.read(), pd.DataFrame(log_rows)
 
 # =========================
+# FUNCIÓN GENÉRICA PARA DESCARGA DE ARCHIVOS MinIO POR CONTRIBUYENTE
+# =========================
+def download_minio_to_zip_by_contributor(
+    data_rows: List[Dict[str, Any]],
+    url_field: str,
+    contributor_field: str,
+    timeout_sec: int = 120
+) -> Tuple[bytes, pd.DataFrame]:
+    """
+    Descarga archivos desde URLs de MinIO y los organiza en un ZIP con carpetas por contribuyente.
+    No extrae ZIPs internos: guarda cada archivo con su nombre original.
+
+    Args:
+        data_rows: Lista de diccionarios con los datos (ej: resultado de consultas)
+        url_field: Nombre del campo que contiene la URL de MinIO (ej: 'url_minio', 'data')
+        contributor_field: Nombre del campo identificador del contribuyente (ej: 'cuit_representado', 'cuit_login')
+        timeout_sec: Timeout para descargas HTTP
+
+    Returns:
+        Tupla con (bytes del ZIP, DataFrame con log de operaciones)
+    """
+    log_rows = []
+    zip_buffer = BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for row in data_rows:
+            contributor_id = normalize_contributor_id(row.get(contributor_field))
+            
+            # Extraer URLs desde el campo especificado
+            url_value = row.get(url_field)
+            urls_to_process = []
+            seen_urls = set()
+
+            def add_url(u: str) -> None:
+                if u and u not in seen_urls:
+                    seen_urls.add(u)
+                    urls_to_process.append(u)
+
+            def collect_urls(obj: Any) -> None:
+                if obj is None:
+                    return
+                if isinstance(obj, str):
+                    for m in re.findall(r"https?://[^\s\"'<>]+", obj):
+                        add_url(m)
+                    return
+                if isinstance(obj, dict):
+                    for k, v in obj.items():
+                        # detectar URLs directas en claves típicas
+                        if isinstance(v, str):
+                            collect_urls(v)
+                        else:
+                            collect_urls(v)
+                    return
+                if isinstance(obj, list):
+                    for item in obj:
+                        collect_urls(item)
+                    return
+            
+            # Si el campo contiene un JSON string, parsearlo y extraer URLs
+            if isinstance(url_value, str):
+                try:
+                    parsed = json.loads(url_value)
+                    collect_urls(parsed)
+                except Exception:
+                    collect_urls(url_value)
+            else:
+                collect_urls(url_value)
+            
+            # Procesar cada URL encontrada
+            for url in urls_to_process:
+                if not url:
+                    continue
+                try:
+                    r = requests.get(url, timeout=timeout_sec, stream=True)
+                    if r.status_code != 200:
+                        log_rows.append({
+                            "contribuyente": contributor_id,
+                            "url": url,
+                            "estado": "error_http",
+                            "detalle": f"HTTP {r.status_code}"
+                        })
+                        continue
+                    
+                    fname = get_filename_from_headers(r) or infer_filename_from_url(url)
+                    content = r.content
+
+                    # Carpeta del contribuyente
+                    carpeta = sanitize_filename(str(contributor_id))
+
+                    arcname = os.path.join(carpeta, fname or "archivo")
+                    final_name = write_unique(zf, arcname, content)
+                    log_rows.append({
+                        "contribuyente": contributor_id,
+                        "url": url,
+                        "estado": "ok_archivo",
+                        "detalle": final_name
+                    })
+                except Exception as e:
+                    log_rows.append({
+                        "contribuyente": contributor_id,
+                        "url": url,
+                        "estado": "error",
+                        "detalle": str(e)
+                    })
+    
+    zip_buffer.seek(0)
+    return zip_buffer.read(), pd.DataFrame(log_rows)
+
+# =========================
 # NUEVAS UTILIDADES — SOLAPA 4
 # =========================
+URL_REGEX = re.compile(r"https?://[^\s\"'<>]+")
 CUIT_REGEX = re.compile(r"(?<!\d)(\d{11})(?!\d)")
+
+def extract_minio_urls_from_excel(uploaded_file: Any) -> Tuple[List[Dict[str, str]], pd.DataFrame]:
+    """
+    Lee un Excel y extrae URLs de MinIO desde cualquier celda.
+    Si existe una columna de contribuyente (p.ej. cuit_representado),
+    se asocia cada URL a ese contribuyente para armar subcarpetas.
+    """
+    df = pd.read_excel(uploaded_file, dtype=str).fillna("")
+    df.columns = [c.strip().lower() for c in df.columns]
+    contrib_cols = [c for c in ("cuit_representado", "representado_cuit", "contribuyente", "cuit") if c in df.columns]
+    rows: List[Dict[str, str]] = []
+    seen = set()
+    log_rows: List[Dict[str, Any]] = []
+
+    for _, row in df.iterrows():
+        contributor_val = ""
+        for col in contrib_cols:
+            val = str(row.get(col, "")).strip()
+            if val:
+                contributor_val = val
+                break
+        if not contributor_val:
+            contributor_val = "sin_identificar"
+
+        for val in row.to_list():
+            text = str(val) if val is not None else ""
+            if not text or text.strip().lower() in {"nan", "none"}:
+                continue
+            for m in URL_REGEX.findall(text):
+                url = m.strip()
+                if not url:
+                    continue
+                if "minio" not in url.lower():
+                    log_rows.append({"contribuyente": contributor_val, "url": url, "estado": "ignorado_no_minio"})
+                    continue
+                key = (contributor_val, url)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append({"contribuyente": contributor_val, "url": url})
+                log_rows.append({"contribuyente": contributor_val, "url": url, "estado": "ok"})
+    return rows, pd.DataFrame(log_rows)
+
+def collect_url_entries_from_df(
+    df: pd.DataFrame,
+    url_col: Optional[str],
+    contributor_col: Optional[str],
+    extract_zip: bool
+) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    if not url_col or url_col not in df.columns:
+        return entries
+    seen = set()
+    for _, row in df.iterrows():
+        contrib_val = ""
+        if contributor_col and contributor_col in df.columns:
+            contrib_val = normalize_contributor_id(row.get(contributor_col))
+        cell = row.get(url_col, "")
+        text = str(cell) if cell is not None else ""
+        if not text or text.strip().lower() in {"nan", "none"}:
+            continue
+        for m in URL_REGEX.findall(text):
+            url = m.strip()
+            if not url:
+                continue
+            key = (contrib_val, url)
+            if key in seen:
+                continue
+            seen.add(key)
+            entry: Dict[str, Any] = {"url": url, "extract": extract_zip}
+            if contrib_val:
+                entry["contribuyente"] = contrib_val
+            entries.append(entry)
+    return entries
+
+def download_minio_links_to_zip(
+    urls: List[str],
+    folder: str = "MinIO",
+    timeout_sec: int = 120
+) -> Tuple[bytes, pd.DataFrame]:
+    """
+    Descarga una lista de URLs de MinIO y arma un ZIP.
+    Usa el nombre original del archivo. No extrae ZIPs internos.
+    """
+    log_rows = []
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for url in urls:
+            if not url:
+                continue
+            try:
+                r = requests.get(url, timeout=timeout_sec, stream=True)
+                if r.status_code != 200:
+                    log_rows.append({"url": url, "estado": "error_http", "detalle": f"HTTP {r.status_code}"})
+                    continue
+                fname = get_filename_from_headers(r) or infer_filename_from_url(url)
+                content = r.content
+                carpeta = sanitize_filename(folder)
+                arcname = os.path.join(carpeta, fname or "archivo")
+                final_name = write_unique(zf, arcname, content)
+                log_rows.append({"url": url, "estado": "ok_archivo", "detalle": final_name})
+            except Exception as e:
+                log_rows.append({"url": url, "estado": "error", "detalle": str(e)})
+    zip_buffer.seek(0)
+    return zip_buffer.read(), pd.DataFrame(log_rows)
+
+def render_minio_mass_download(section_title: str, uploader_key: str, timeout_key: str, button_key: str) -> None:
+    st.markdown(f"#### Descarga masiva {section_title} (solo links MinIO)")
+    st.write(
+        "Subí un Excel con links MinIO. Si hay columna de contribuyente (ej: `cuit_representado`), "
+        "se crearán subcarpetas por contribuyente."
+    )
+    up = st.file_uploader("Archivo Excel (.xlsx)", type=["xlsx"], key=uploader_key)
+    timeout = st.number_input("Timeout por archivo (segundos)", min_value=10, value=120, step=10, key=timeout_key)
+    if up is not None:
+        try:
+            rows, scan_log = extract_minio_urls_from_excel(up)
+        except Exception as e:
+            st.error(f"Error leyendo el Excel: {e}")
+            return
+        st.write(f"Links MinIO detectados: {len(rows)}")
+        if st.button("📦 Descargar ZIP desde MinIO", key=button_key):
+            if not rows:
+                st.warning("No se encontraron links MinIO.")
+                return
+            with st.spinner("Descargando archivos desde MinIO..."):
+                zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                    rows,
+                    url_field="url",
+                    contributor_field="contribuyente",
+                    timeout_sec=int(timeout)
+                )
+            st.download_button(
+                label="⬇️ Descargar ZIP",
+                data=zip_bytes,
+                file_name=f"{section_title.lower().replace(' ', '_')}_minio_{date.today().strftime('%Y%m%d')}.zip",
+                mime="application/zip",
+                key=f"download_zip_{button_key}"
+            )
+            log_xlsx = make_output_excel(log_df, sheet_name="Log_Descargas")
+            st.download_button(
+                label="📋 Descargar Log",
+                data=log_xlsx,
+                file_name=f"log_{section_title.lower().replace(' ', '_')}_{date.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"download_log_{button_key}"
+            )
 
 def extract_cuit_from_filename(filename: str) -> Optional[str]:
     m = CUIT_REGEX.findall(filename or "")
@@ -604,14 +1006,21 @@ def build_zip_with_excels(df_emitidos: pd.DataFrame, df_recibidos: pd.DataFrame)
 # TABS (nueva estructura)
 # =========================
 # Definir las solapas principales en el nuevo orden solicitado.
-tab_users, tab_mis_comprobantes, tab_other1, tab_other2, tab_other3, tab_other4, tab_other5 = st.tabs([
+(tab_users, tab_mis_comprobantes, tab_rcel, tab_sct, tab_ccma, tab_mis_retenciones, 
+ tab_sifere, tab_declaracion_linea, tab_mis_facilidades, tab_aportes_linea, 
+ tab_apoc, tab_cuit) = st.tabs([
     "Usuarios",
     "Mis Comprobantes",
     "RCEL",
     "SCT",
     "CCMA",
+    "Mis Retenciones",
+    "SIFERE",
+    "Declaración en Línea",
+    "Mis Facilidades",
+    "Aportes en Línea",
     "APOC",
-    "Consulta de Constancia de CUIT"
+    "Consulta de CUIT"
 ])
 
 # Crear sub-solapas dentro de "Mis Comprobantes" que corresponden a las funcionalidades
@@ -838,14 +1247,15 @@ with tab2:
                         st.metric("Consultas disponibles", int(consultas_disponibles))
 
 # -------------------------------------------------------------------
-# TAB 3: Descarga de archivos S3/MinIO a ZIP (extrayendo .zip internos)
+# TAB 3: Descarga de archivos S3/MinIO a ZIP
 # -------------------------------------------------------------------
 with tab3:
     st.subheader("3) Descargar columnas MinIO del consolidado → ZIP (Emitidos/Recibidos)")
     st.write(
         "Subí el **Excel consolidado** de la solapa 1. Se leerán preferentemente las columnas `emitidos_url_minio` y `recibidos_url_minio`. "
-        "Si no existen, se intentará usar las columnas de S3. Si una URL es un `.zip`, "
-        "**se extraen sus archivos internos** y se guardan sueltos en las carpetas correspondientes."
+        "Si no existen, se intentará usar las columnas de S3. Los archivos de MinIO se descargan "
+        "con su **nombre original** y **sin extraer** contenidos. "
+        "Si existe `cuit_representado` (o `representado_cuit`), se crearán subcarpetas por contribuyente."
     )
     up_zip = st.file_uploader("Seleccionar consolidado (.xlsx)", type=["xlsx"], key="uploader_tab3")
 
@@ -872,19 +1282,45 @@ with tab3:
             )
             st.stop()
 
+        contrib_col = None
+        for cand in ("cuit_representado", "representado_cuit"):
+            if cand in df_zip.columns:
+                contrib_col = cand
+                break
+
         # Extraer listas de URLs según la prioridad MinIO -> S3
         if col_emitidos_minio:
-            urls_emitidos = [u for u in df_zip[col_emitidos_minio].tolist() if isinstance(u, str) and u.strip()]
+            urls_emitidos = collect_url_entries_from_df(
+                df_zip,
+                col_emitidos_minio,
+                contrib_col,
+                extract_zip=False
+            )
         else:
-            urls_emitidos = [u for u in df_zip[col_emitidos_s3].tolist() if isinstance(u, str) and u.strip()]
+            urls_emitidos = collect_url_entries_from_df(
+                df_zip,
+                col_emitidos_s3,
+                contrib_col,
+                extract_zip=True
+            )
         if col_recibidos_minio:
-            urls_recibidos = [u for u in df_zip[col_recibidos_minio].tolist() if isinstance(u, str) and u.strip()]
+            urls_recibidos = collect_url_entries_from_df(
+                df_zip,
+                col_recibidos_minio,
+                contrib_col,
+                extract_zip=False
+            )
         else:
-            urls_recibidos = [u for u in df_zip[col_recibidos_s3].tolist() if isinstance(u, str) and u.strip()]
+            urls_recibidos = collect_url_entries_from_df(
+                df_zip,
+                col_recibidos_s3,
+                contrib_col,
+                extract_zip=True
+            )
 
         st.write(f"URLs en **Emitidos**: {len(urls_emitidos)} | URLs en **Recibidos**: {len(urls_recibidos)}")
 
-        if st.button("📦 Generar ZIP con descargas (extrayendo .zip)", key="btn_zip"):
+        if st.button("📦 Generar ZIP con descargas", key="btn_zip"):
             with st.spinner("Descargando archivos y construyendo ZIP..."):
                 zip_bytes, log_df = download_to_zip(
                     urls_emitidos=urls_emitidos,
@@ -911,7 +1347,10 @@ with tab3:
                 key="download_log_tab3"
             )
 
-    st.caption("Nota: Si un enlace apunta a un `.zip`, se extraen sus contenidos y se guardan sueltos dentro de `Emitidos/` o `Recibidos/`. No se incluye el `.zip` original.")
+    st.caption(
+        "Nota: los links MinIO se guardan tal cual (sin extracción). "
+        "Si se usan links S3, se mantienen las extracciones de ZIP internos."
+    )
 
 # -------------------------------------------------------------------
 # TAB 4: Consolidar salidas (ZIP → 2 Excel) — SIN VISTA PREVIA
@@ -950,21 +1389,21 @@ with tab4:
 # TAB 5: Otros endpoints (Comprobantes en Línea, SCT, CCMA, Apócrifos, Consulta de CUIT)
 # -------------------------------------------------------------------
 # Ajuste: cada endpoint ahora es su propia solapa principal.
-with tab_other1:
+with tab_rcel:
     st.subheader("RCEL")
-    subtab_rcel = tab_other1  # Reutilizar variable para el contenido existente
-with tab_other2:
+    subtab_rcel = tab_rcel  # Reutilizar variable para el contenido existente
+with tab_sct:
     st.subheader("SCT")
-    subtab_sct = tab_other2
-with tab_other3:
+    subtab_sct = tab_sct
+with tab_ccma:
     st.subheader("CCMA")
-    subtab_ccma = tab_other3
-with tab_other4:
+    subtab_ccma = tab_ccma
+with tab_apoc:
     st.subheader("APOC")
-    subtab_apoc = tab_other4
-with tab_other5:
+    subtab_apoc = tab_apoc
+with tab_cuit:
     st.subheader("Consulta de Constancia de CUIT")
-    subtab_cuit = tab_other5
+    subtab_cuit = tab_cuit
 
     # -------------------------------------------------------------
     # Subtab: Comprobantes en Línea (RCEL)
@@ -1007,81 +1446,49 @@ with tab_other5:
                         resp_rcel = call_rcel_consulta(base_url, headers_local, payload_rcel)
                     st.info(f"HTTP status: {resp_rcel.get('http_status')}")
                     st.json(resp_rcel.get("data"))
-        else:
-            st.markdown("#### Consulta masiva RCEL")
-            st.write(
-                "Subí un archivo Excel (.xlsx) con las columnas **cuit_representante**, **nombre_rcel**, "
-                "**representado_cuit** y **clave**. Para cada fila se enviará una solicitud."
-            )
-            rcel_file = st.file_uploader("Archivo Excel con contribuyentes", type=["xlsx"], key="rcel_file_upload")
-            if rcel_file is not None:
-                try:
-                    df_rcel = pd.read_excel(rcel_file, dtype=str).fillna("")
-                except Exception as e:
-                    st.error(f"Error leyendo el Excel: {e}")
-                    df_rcel = pd.DataFrame()
-                required_cols = ["cuit_representante", "nombre_rcel", "representado_cuit", "clave"]
-                df_rcel.columns = [c.strip().lower() for c in df_rcel.columns]
-                missing = [c for c in required_cols if c not in df_rcel.columns]
-                if missing:
-                    st.error(f"El Excel cargado no tiene las columnas requeridas: {', '.join(missing)}")
-                else:
-                    st.success(f"Filas leídas: {len(df_rcel)}")
-                    with st.expander("👀 Vista previa (primeras filas)"):
-                        st.dataframe(df_rcel.head(10), use_container_width=True)
-                    if st.button("Procesar consultas RCEL", key="btn_rcel_masivo"):
-                        headers_local = build_headers(x_api_key, header_email)
-                        out_rows = []
-                        progress = st.progress(0)
-                        status_ph = st.empty()
-                        for idx, row in df_rcel.reset_index(drop=True).iterrows():
-                            status_ph.info(
-                                f"Procesando {idx+1}/{len(df_rcel)} — {row['nombre_rcel']} (CUIT {row['representado_cuit']})"
-                            )
-                            payload = {
-                                "desde": as_ddmmyyyy(rcel_desde),
-                                "hasta": as_ddmmyyyy(rcel_hasta),
-                                "cuit_representante": row["cuit_representante"].strip(),
-                                "nombre_rcel": row["nombre_rcel"].strip(),
-                                "representado_cuit": row["representado_cuit"].strip(),
-                                "clave": row["clave"],
-                                "b64_pdf": bool(rcel_b64_pdf),
-                                "minio_upload": bool(rcel_minio)
-                            }
-                            resp = call_rcel_consulta(base_url, headers_local, payload)
-                            http_status = resp.get("http_status")
-                            data = resp.get("data", {})
-                            # Extraer algunos campos de interés para el resumen
-                            success = data.get("success") if isinstance(data, dict) else None
-                            message = data.get("message") if isinstance(data, dict) else None
-                            # Contar cantidad de facturas devueltas
-                            num_facturas = None
-                            if isinstance(data, dict):
-                                fe = data.get("facturas_emitidas")
-                                if isinstance(fe, list):
-                                    num_facturas = len(fe)
-                            out_rows.append({
-                                "cuit_representante": row["cuit_representante"],
-                                "nombre_rcel": row["nombre_rcel"],
-                                "representado_cuit": row["representado_cuit"],
-                                "http_status": http_status,
-                                "success": success,
-                                "message": message,
-                                "num_facturas": num_facturas
-                            })
-                            progress.progress(int((idx + 1) / len(df_rcel) * 100))
-                        status_ph.success("Procesamiento finalizado.")
-                        result_rcel_df = pd.DataFrame(out_rows)
-                        st.write("### Resultado de consultas RCEL (vista previa)")
-                        st.dataframe(result_rcel_df.head(50), use_container_width=True)
-                        xlsx_bytes = make_output_excel(result_rcel_df, sheet_name="RCEL_Masivo")
-                        st.download_button(
-                            label="⬇️ Descargar Excel de resultados RCEL",
-                            data=xlsx_bytes,
-                            file_name=f"consolidado_rcel_{date.today().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="download_rcel_masivo"
+                    st.session_state["rcel_last_response"] = resp_rcel.get("data")
+                    st.session_state["rcel_last_cuit_repr"] = rc_cuit_repr.strip()
+
+            last_rcel_data = st.session_state.get("rcel_last_response")
+            last_rcel_cuit = st.session_state.get("rcel_last_cuit_repr", "").strip()
+            if last_rcel_data is not None and last_rcel_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_rcel_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"representado_cuit": last_rcel_cuit, "data": json.dumps(last_rcel_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="representado_cuit"
                         )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"rcel_{last_rcel_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_rcel_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_rcel_{last_rcel_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_rcel_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            render_minio_mass_download(
+                section_title="RCEL",
+                uploader_key="rcel_minio_file_upload",
+                timeout_key="rcel_minio_timeout",
+                button_key="btn_rcel_minio_zip"
+            )
 
     # -------------------------------------------------------------
     # Subtab: Sistema de Cuentas Tributarias (SCT)
@@ -1156,77 +1563,49 @@ with tab_other5:
                                     )
                                 except Exception:
                                     pass
-        else:
-            st.markdown("#### Consulta masiva SCT")
-            st.write(
-                "Subí un archivo Excel (.xlsx) con las columnas **cuit_login**, **clave** y **cuit_representado**. "
-                "Para cada fila se enviará una solicitud."
-            )
-            sct_file = st.file_uploader("Archivo Excel con contribuyentes", type=["xlsx"], key="sct_file_upload")
-            if sct_file is not None:
-                try:
-                    df_sct = pd.read_excel(sct_file, dtype=str).fillna("")
-                except Exception as e:
-                    st.error(f"Error leyendo el Excel: {e}")
-                    df_sct = pd.DataFrame()
-                required_cols_sct = ["cuit_login", "clave", "cuit_representado"]
-                df_sct.columns = [c.strip().lower() for c in df_sct.columns]
-                missing = [c for c in required_cols_sct if c not in df_sct.columns]
-                if missing:
-                    st.error(f"El Excel cargado no tiene las columnas requeridas: {', '.join(missing)}")
-                else:
-                    st.success(f"Filas leídas: {len(df_sct)}")
-                    with st.expander("👀 Vista previa (primeras filas)"):
-                        st.dataframe(df_sct.head(10), use_container_width=True)
-                    if st.button("Procesar consultas SCT", key="btn_sct_masivo"):
-                        headers_local = build_headers(x_api_key, header_email)
-                        out_rows_sct = []
-                        progress = st.progress(0)
-                        status_ph = st.empty()
-                        for idx, row in df_sct.reset_index(drop=True).iterrows():
-                            status_ph.info(
-                                f"Procesando {idx+1}/{len(df_sct)} — CUIT {row['cuit_representado']}"
-                            )
-                            payload_sct = {
-                                "cuit_login": row["cuit_login"].strip(),
-                                "clave": row["clave"],
-                                "cuit_representado": row["cuit_representado"].strip(),
-                                "excel_b64": bool(sct_excel_b64),
-                                "csv_b64": bool(sct_csv_b64),
-                                "pdf_b64": bool(sct_pdf_b64),
-                                "excel_minio": bool(sct_excel_minio),
-                                "csv_minio": bool(sct_csv_minio),
-                                "pdf_minio": bool(sct_pdf_minio),
-                                "proxy_request": bool(sct_proxy)
-                            }
-                            resp = call_sct_consulta(base_url, headers_local, payload_sct)
-                            http_status = resp.get("http_status")
-                            data = resp.get("data", {})
-                            status_field = None
-                            error_message = None
-                            if isinstance(data, dict):
-                                status_field = data.get("status")
-                                error_message = data.get("error_message")
-                            out_rows_sct.append({
-                                "cuit_login": row["cuit_login"],
-                                "cuit_representado": row["cuit_representado"],
-                                "http_status": http_status,
-                                "status": status_field,
-                                "error_message": error_message
-                            })
-                            progress.progress(int((idx + 1) / len(df_sct) * 100))
-                        status_ph.success("Procesamiento finalizado.")
-                        result_sct_df = pd.DataFrame(out_rows_sct)
-                        st.write("### Resultado de consultas SCT (vista previa)")
-                        st.dataframe(result_sct_df.head(50), use_container_width=True)
-                        xlsx_bytes = make_output_excel(result_sct_df, sheet_name="SCT_Masivo")
-                        st.download_button(
-                            label="⬇️ Descargar Excel de resultados SCT",
-                            data=xlsx_bytes,
-                            file_name=f"consolidado_sct_{date.today().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="download_sct_masivo"
+                    st.session_state["sct_last_response"] = data_sct
+                    st.session_state["sct_last_cuit_repr"] = sct_cuit_repr.strip()
+
+            last_sct_data = st.session_state.get("sct_last_response")
+            last_sct_cuit = st.session_state.get("sct_last_cuit_repr", "").strip()
+            if last_sct_data is not None and last_sct_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_sct_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_sct_cuit, "data": json.dumps(last_sct_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
                         )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"sct_{last_sct_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_sct_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_sct_{last_sct_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_sct_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            render_minio_mass_download(
+                section_title="SCT",
+                uploader_key="sct_minio_file_upload",
+                timeout_key="sct_minio_timeout",
+                button_key="btn_sct_minio_zip"
+            )
 
     # -------------------------------------------------------------
     # Subtab: CCMA (Cuenta Corriente de Monotributistas y Autónomos)
@@ -1288,94 +1667,680 @@ with tab_other5:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="download_ccma_ind"
                     )
+                    st.session_state["ccma_last_response_json"] = resumen_row.get("response_json", "{}")
+                    st.session_state["ccma_last_cuit_repr"] = ccma_cuit_repr.strip()
+
+            last_ccma_json = st.session_state.get("ccma_last_response_json")
+            last_ccma_cuit = st.session_state.get("ccma_last_cuit_repr", "").strip()
+            if last_ccma_json is not None and last_ccma_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_ccma_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_ccma_cuit, "response_json": last_ccma_json}],
+                            url_field="response_json",
+                            contributor_field="cuit_representado"
+                        )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"ccma_{last_ccma_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_ccma_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_ccma_{last_ccma_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_ccma_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
         else:
-            st.markdown("#### Consulta masiva CCMA")
-            st.write(
-                "Subí un archivo Excel (.xlsx) con las columnas **cuit_representante**, **clave_representante** y "
-                "**cuit_representado**. Para cada fila se enviará una solicitud. "
-                "Opcional: columna **movimientos** para indicar Sí/No por fila y **procesar** para saltear filas."
+            render_minio_mass_download(
+                section_title="CCMA",
+                uploader_key="ccma_minio_file_upload",
+                timeout_key="ccma_minio_timeout",
+                button_key="btn_ccma_minio_zip"
             )
-            ccma_file = st.file_uploader("Archivo Excel con contribuyentes", type=["xlsx"], key="ccma_file_upload")
-            if ccma_file is not None:
-                try:
-                    df_ccma = pd.read_excel(ccma_file, dtype=str).fillna("")
-                except Exception as e:
-                    st.error(f"Error leyendo el Excel: {e}")
-                    df_ccma = pd.DataFrame()
-                required_cols_ccma = ["cuit_representante", "clave_representante", "cuit_representado"]
-                df_ccma.columns = [c.strip().lower() for c in df_ccma.columns]
-                missing = [c for c in required_cols_ccma if c not in df_ccma.columns]
-                if missing:
-                    st.error(f"El Excel cargado no tiene las columnas requeridas: {', '.join(missing)}")
+
+    # -------------------------------------------------------------
+    # TAB: Mis Retenciones
+    # -------------------------------------------------------------
+    with tab_mis_retenciones:
+        st.markdown("### Mis Retenciones")
+        st.write(
+            "Consulta retenciones de AFIP. Selecciona modo individual o masivo (con Excel). "
+            "Soporta descarga automática desde MinIO."
+        )
+        mr_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="mr_mode", horizontal=True)
+        mr_desde = st.date_input("Desde", value=date(date.today().year, 1, 1), format="DD/MM/YYYY", key="mr_desde_date")
+        mr_hasta = st.date_input("Hasta", value=date.today(), format="DD/MM/YYYY", key="mr_hasta_date")
+        mr_minio = st.checkbox("Carga a MinIO", value=True, key="mr_minio_option")
+        mr_proxy = st.checkbox("Usar proxy_request", value=False, key="mr_proxy_option")
+        
+        if mr_mode == "Individual":
+            mr_cuit_rep = st.text_input("CUIT representante", value="", key="mr_cuit_rep_ind")
+            mr_clave = st.text_input("Clave representante", value="", type="password", key="mr_clave_ind")
+            mr_cuit_repr = st.text_input("CUIT representado (opcional)", value="", key="mr_cuit_repr_ind")
+            mr_denominacion = st.text_input("Denominación", value="", key="mr_denominacion_ind")
+            
+            if st.button("Consultar Mis Retenciones", key="btn_mr_consulta_ind"):
+                if not (mr_cuit_rep.strip() and mr_clave.strip() and mr_denominacion.strip()):
+                    st.warning("Completá CUIT representante, clave y denominación.")
                 else:
-                    if "procesar" in df_ccma.columns:
-                        df_ccma = df_ccma[df_ccma["procesar"].apply(lambda v: parse_bool_cell(v, default=True))]
-                    df_ccma = df_ccma[
-                        (df_ccma["cuit_representante"].str.strip() != "") &
-                        (df_ccma["clave_representante"].str.strip() != "") &
-                        (df_ccma["cuit_representado"].str.strip() != "")
-                    ].copy()
-                    st.success(f"Filas leídas: {len(df_ccma)}")
-                    with st.expander("👀 Vista previa (primeras filas)"):
-                        st.dataframe(df_ccma.head(10), use_container_width=True)
-                    if df_ccma.empty:
-                        st.warning("No hay filas válidas para procesar.")
-                    elif st.button("Procesar consultas CCMA", key="btn_ccma_masivo"):
+                    headers_local = build_headers(x_api_key, header_email)
+                    payload_mr = {
+                        "cuit_representante": mr_cuit_rep.strip(),
+                        "clave_representante": mr_clave,
+                        "cuit_representado": mr_cuit_repr.strip() if mr_cuit_repr.strip() else None,
+                        "denominacion": mr_denominacion.strip(),
+                        "desde": as_ddmmyyyy(mr_desde),
+                        "hasta": as_ddmmyyyy(mr_hasta),
+                        "carga_minio": bool(mr_minio),
+                        "proxy_request": bool(mr_proxy)
+                    }
+                    with st.spinner("Consultando Mis Retenciones..."):
+                        resp_mr = call_mis_retenciones_consulta(base_url, headers_local, payload_mr)
+                    st.info(f"HTTP status: {resp_mr.get('http_status')}")
+                    st.json(resp_mr.get("data"))
+                    cuit_id = mr_cuit_repr.strip() if mr_cuit_repr.strip() else mr_cuit_rep.strip()
+                    st.session_state["mr_last_response"] = resp_mr.get("data")
+                    st.session_state["mr_last_cuit_id"] = cuit_id
+
+            last_mr_data = st.session_state.get("mr_last_response")
+            last_mr_cuit = st.session_state.get("mr_last_cuit_id", "").strip()
+            if last_mr_data is not None and last_mr_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_mr_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_mr_cuit, "data": json.dumps(last_mr_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
+                        )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"mis_retenciones_{last_mr_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_mr_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_mis_retenciones_{last_mr_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_mr_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            render_minio_mass_download(
+                section_title="Mis_Retenciones",
+                uploader_key="mr_minio_file_upload",
+                timeout_key="mr_minio_timeout",
+                button_key="btn_mr_minio_zip"
+            )
+
+    # -------------------------------------------------------------
+    # TAB: SIFERE
+    # -------------------------------------------------------------
+    with tab_sifere:
+        st.markdown("### SIFERE - Sistema Federal de Recaudación")
+        st.write("Consulta SIFERE por jurisdicción. Modo individual o masivo (Excel).")
+        sifere_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="sifere_mode", horizontal=True)
+        sifere_periodo = st.text_input("Período (ej: 202401)", value="", key="sifere_periodo")
+        sifere_minio = st.checkbox("Carga a MinIO", value=True, key="sifere_minio_option")
+        sifere_proxy = st.checkbox("Usar proxy_request", value=False, key="sifere_proxy_option")
+        
+        if sifere_mode == "Individual":
+            sifere_cuit_rep = st.text_input("CUIT representante", value="", key="sifere_cuit_rep_ind")
+            sifere_clave = st.text_input("Clave representante", value="", type="password", key="sifere_clave_ind")
+            sifere_cuit_repr = st.text_input("CUIT representado", value="", key="sifere_cuit_repr_ind")
+            sifere_nombre = st.text_input("Nombre representado (opcional)", value="", key="sifere_nombre_ind")
+            sifere_jurisdicciones = st.text_input("Jurisdicciones (ej: 901,902)", value="", key="sifere_jurisdicciones_ind")
+            
+            if st.button("Consultar SIFERE", key="btn_sifere_consulta_ind"):
+                if not (sifere_cuit_rep.strip() and sifere_clave.strip() and sifere_cuit_repr.strip() and sifere_periodo.strip()):
+                    st.warning("Completá CUIT representante, clave, CUIT representado y período.")
+                else:
+                    jurisdicciones_list = [j.strip() for j in sifere_jurisdicciones.split(",") if j.strip()]
+                    headers_local = build_headers(x_api_key, header_email)
+                    payload_sifere = {
+                        "cuit_representante": sifere_cuit_rep.strip(),
+                        "clave_representante": sifere_clave,
+                        "cuit_representado": sifere_cuit_repr.strip(),
+                        "periodo": sifere_periodo.strip(),
+                        "representado_nombre": sifere_nombre.strip() if sifere_nombre.strip() else None,
+                        "jurisdicciones": jurisdicciones_list,
+                        "carga_minio": bool(sifere_minio),
+                        "proxy_request": bool(sifere_proxy)
+                    }
+                    with st.spinner("Consultando SIFERE..."):
+                        resp_sifere = call_sifere_consulta(base_url, headers_local, payload_sifere)
+                    st.info(f"HTTP status: {resp_sifere.get('http_status')}")
+                    st.json(resp_sifere.get("data"))
+                    st.session_state["sifere_last_response"] = resp_sifere.get("data")
+                    st.session_state["sifere_last_cuit_repr"] = sifere_cuit_repr.strip()
+
+            last_sifere_data = st.session_state.get("sifere_last_response")
+            last_sifere_cuit = st.session_state.get("sifere_last_cuit_repr", "").strip()
+            if last_sifere_data is not None and last_sifere_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_sifere_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_sifere_cuit, "data": json.dumps(last_sifere_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
+                        )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"sifere_{last_sifere_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_sifere_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_sifere_{last_sifere_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_sifere_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            render_minio_mass_download(
+                section_title="SIFERE",
+                uploader_key="sifere_minio_file_upload",
+                timeout_key="sifere_minio_timeout",
+                button_key="btn_sifere_minio_zip"
+            )
+
+    # -------------------------------------------------------------
+    # TAB: Declaración en Línea
+    # -------------------------------------------------------------
+    with tab_declaracion_linea:
+        st.markdown("### Declaración en Línea")
+        st.write("Consulta declaraciones juradas presentadas. Modo individual o masivo (Excel).")
+        decl_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="decl_mode", horizontal=True)
+        decl_periodo_desde = st.text_input("Período desde (ej: 202401)", value="", key="decl_periodo_desde")
+        decl_periodo_hasta = st.text_input("Período hasta (ej: 202412)", value="", key="decl_periodo_hasta")
+        decl_minio = st.checkbox("Carga a MinIO", value=True, key="decl_minio_option")
+        decl_proxy = st.checkbox("Usar proxy_request", value=False, key="decl_proxy_option")
+        
+        if decl_mode == "Individual":
+            decl_cuit_rep = st.text_input("CUIT representante", value="", key="decl_cuit_rep_ind")
+            decl_clave = st.text_input("Clave representante", value="", type="password", key="decl_clave_ind")
+            decl_cuit_repr = st.text_input("CUIT representado (opcional)", value="", key="decl_cuit_repr_ind")
+            decl_nombre = st.text_input("Nombre representado (opcional)", value="", key="decl_nombre_ind")
+            
+            if st.button("Consultar Declaración en Línea", key="btn_decl_consulta_ind"):
+                if not (decl_cuit_rep.strip() and decl_clave.strip() and decl_periodo_desde.strip() and decl_periodo_hasta.strip()):
+                    st.warning("Completá CUIT representante, clave y períodos.")
+                else:
+                    headers_local = build_headers(x_api_key, header_email)
+                    payload_decl = {
+                        "cuit_representante": decl_cuit_rep.strip(),
+                        "clave_representante": decl_clave,
+                        "cuit_representado": decl_cuit_repr.strip() if decl_cuit_repr.strip() else None,
+                        "representado_nombre": decl_nombre.strip() if decl_nombre.strip() else None,
+                        "periodo_desde": decl_periodo_desde.strip(),
+                        "periodo_hasta": decl_periodo_hasta.strip(),
+                        "carga_minio": bool(decl_minio),
+                        "proxy_request": bool(decl_proxy)
+                    }
+                    with st.spinner("Consultando Declaración en Línea..."):
+                        resp_decl = call_declaracion_en_linea_consulta(base_url, headers_local, payload_decl)
+                    st.info(f"HTTP status: {resp_decl.get('http_status')}")
+                    st.json(resp_decl.get("data"))
+                    cuit_id = decl_cuit_repr.strip() if decl_cuit_repr.strip() else decl_cuit_rep.strip()
+                    st.session_state["decl_last_response"] = resp_decl.get("data")
+                    st.session_state["decl_last_cuit_id"] = cuit_id
+
+            last_decl_data = st.session_state.get("decl_last_response")
+            last_decl_cuit = st.session_state.get("decl_last_cuit_id", "").strip()
+            if last_decl_data is not None and last_decl_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_decl_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_decl_cuit, "data": json.dumps(last_decl_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
+                        )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"declaracion_linea_{last_decl_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_decl_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_declaracion_linea_{last_decl_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_decl_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            st.markdown("#### Consulta masiva Declaración en Línea")
+            st.write("Subí un Excel con: **cuit_representante**, **clave_representante**, **cuit_representado** (opcional), **representado_nombre** (opcional)")
+            decl_file = st.file_uploader("Archivo Excel", type=["xlsx"], key="decl_file_upload")
+            if decl_file:
+                try:
+                    df_decl = pd.read_excel(decl_file, dtype=str).fillna("")
+                except Exception as e:
+                    st.error(f"Error leyendo Excel: {e}")
+                    df_decl = pd.DataFrame()
+                df_decl.columns = [c.strip().lower() for c in df_decl.columns]
+                required = ["cuit_representante", "clave_representante"]
+                missing = [c for c in required if c not in df_decl.columns]
+                if missing:
+                    st.error(f"Faltan columnas: {', '.join(missing)}")
+                else:
+                    st.success(f"Filas leídas: {len(df_decl)}")
+                    with st.expander("👀 Vista previa"):
+                        st.dataframe(df_decl.head(10), use_container_width=True)
+                    if st.button("Procesar Declaración en Línea masivo", key="btn_decl_masivo"):
                         headers_local = build_headers(x_api_key, header_email)
-                        resumen_rows_ccma: List[Dict[str, Any]] = []
-                        movimientos_rows_ccma: List[Dict[str, Any]] = []
-                        movimientos_requested_any = False
+                        out_rows = []
                         progress = st.progress(0)
                         status_ph = st.empty()
-                        for idx, row in df_ccma.reset_index(drop=True).iterrows():
-                            movimientos_flag = parse_bool_cell(row.get("movimientos"), default=ccma_movimientos)
-                            movimientos_requested_any = movimientos_requested_any or movimientos_flag
-                            status_ph.info(
-                                f"Procesando {idx+1}/{len(df_ccma)} — CUIT {row['cuit_representado']}"
-                            )
-                            payload_ccma = {
+                        for idx, row in df_decl.reset_index(drop=True).iterrows():
+                            cuit_repr = row.get("cuit_representado", "").strip()
+                            nombre = row.get("representado_nombre", "").strip()
+                            status_ph.info(f"Procesando {idx+1}/{len(df_decl)} — {row['cuit_representante']}")
+                            payload = {
                                 "cuit_representante": row["cuit_representante"].strip(),
                                 "clave_representante": row["clave_representante"],
-                                "cuit_representado": row["cuit_representado"].strip(),
-                                "proxy_request": bool(ccma_proxy),
-                                "movimientos": movimientos_flag
+                                "cuit_representado": cuit_repr if cuit_repr else None,
+                                "representado_nombre": nombre if nombre else None,
+                                "periodo_desde": decl_periodo_desde.strip(),
+                                "periodo_hasta": decl_periodo_hasta.strip(),
+                                "carga_minio": bool(decl_minio),
+                                "proxy_request": bool(decl_proxy)
                             }
-                            resp = call_ccma_consulta(base_url, headers_local, payload_ccma)
-                            http_status = resp.get("http_status")
-                            data = resp.get("data", {})
-                            resumen_row, movimientos_rows = normalize_ccma_response(
-                                http_status,
-                                data,
-                                row["cuit_representante"].strip(),
-                                row["cuit_representado"].strip(),
-                                movimientos_flag
-                            )
-                            resumen_rows_ccma.append(resumen_row)
-                            movimientos_rows_ccma.extend(movimientos_rows)
-                            progress.progress(int((idx + 1) / len(df_ccma) * 100))
+                            resp = call_declaracion_en_linea_consulta(base_url, headers_local, payload)
+                            out_rows.append({
+                                "cuit_representante": row["cuit_representante"],
+                                "cuit_representado": cuit_repr,
+                                "http_status": resp.get("http_status"),
+                                "data": json.dumps(resp.get("data"), ensure_ascii=False)
+                            })
+                            progress.progress(int((idx + 1) / len(df_decl) * 100))
                         status_ph.success("Procesamiento finalizado.")
-                        result_ccma_df, movimientos_df = build_ccma_outputs(
-                            resumen_rows_ccma,
-                            movimientos_rows_ccma,
-                            movimientos_requested_any
+                        result_decl = pd.DataFrame(out_rows)
+                        st.dataframe(result_decl.head(50), use_container_width=True)
+                        xlsx_decl = make_output_excel(result_decl, sheet_name="Declaracion_Linea")
+                        
+                        col_dl1, col_dl2 = st.columns(2)
+                        with col_dl1:
+                            st.download_button(
+                                label="⬇️ Descargar Excel Declaración en Línea",
+                                data=xlsx_decl,
+                                file_name=f"consolidado_declaracion_linea_{date.today().strftime('%Y%m%d')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_decl_masivo"
+                            )
+                        with col_dl2:
+                            if st.button("📦 Generar ZIP con archivos MinIO", key="btn_decl_zip"):
+                                with st.spinner("Descargando archivos desde MinIO..."):
+                                    zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                                        out_rows,
+                                        url_field="data",
+                                        contributor_field="cuit_representado"
+                                    )
+                                st.success(f"ZIP generado: {len(log_df)} operaciones")
+                                st.download_button(
+                                    label="⬇️ Descargar ZIP de archivos",
+                                    data=zip_bytes,
+                                    file_name=f"declaracion_linea_archivos_{date.today().strftime('%Y%m%d')}.zip",
+                                    mime="application/zip",
+                                    key="download_decl_zip_files"
+                                )
+                                log_xlsx = make_output_excel(log_df, sheet_name="Log_Descargas")
+                                st.download_button(
+                                    label="📋 Descargar Log",
+                                    data=log_xlsx,
+                                    file_name=f"log_declaracion_linea_{date.today().strftime('%Y%m%d')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="download_decl_log"
+                                )
+
+    # -------------------------------------------------------------
+    # TAB: Mis Facilidades
+    # -------------------------------------------------------------
+    with tab_mis_facilidades:
+        st.markdown("### Mis Facilidades")
+        st.write("Consulta planes de facilidades de pago. Modo individual o masivo (Excel).")
+        fac_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="fac_mode", horizontal=True)
+        fac_minio = st.checkbox("Carga a MinIO", value=True, key="fac_minio_option")
+        fac_proxy = st.checkbox("Usar proxy_request", value=False, key="fac_proxy_option")
+        
+        if fac_mode == "Individual":
+            fac_cuit_login = st.text_input("CUIT login", value="", key="fac_cuit_login_ind")
+            fac_clave = st.text_input("Clave", value="", type="password", key="fac_clave_ind")
+            fac_cuit_repr = st.text_input("CUIT representado (opcional)", value="", key="fac_cuit_repr_ind")
+            fac_denominacion = st.text_input("Denominación (opcional)", value="", key="fac_denominacion_ind")
+            
+            if st.button("Consultar Mis Facilidades", key="btn_fac_consulta_ind"):
+                if not (fac_cuit_login.strip() and fac_clave.strip()):
+                    st.warning("Completá CUIT login y clave.")
+                else:
+                    headers_local = build_headers(x_api_key, header_email)
+                    payload_fac = {
+                        "cuit_login": fac_cuit_login.strip(),
+                        "clave": fac_clave,
+                        "cuit_representado": fac_cuit_repr.strip() if fac_cuit_repr.strip() else None,
+                        "denominacion": fac_denominacion.strip() if fac_denominacion.strip() else None,
+                        "carga_minio": bool(fac_minio),
+                        "proxy_request": bool(fac_proxy)
+                    }
+                    with st.spinner("Consultando Mis Facilidades..."):
+                        resp_fac = call_mis_facilidades_consulta(base_url, headers_local, payload_fac)
+                    st.info(f"HTTP status: {resp_fac.get('http_status')}")
+                    st.json(resp_fac.get("data"))
+                    cuit_id = fac_cuit_repr.strip() if fac_cuit_repr.strip() else fac_cuit_login.strip()
+                    st.session_state["fac_last_response"] = resp_fac.get("data")
+                    st.session_state["fac_last_cuit_id"] = cuit_id
+
+            last_fac_data = st.session_state.get("fac_last_response")
+            last_fac_cuit = st.session_state.get("fac_last_cuit_id", "").strip()
+            if last_fac_data is not None and last_fac_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_fac_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_fac_cuit, "data": json.dumps(last_fac_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
                         )
-                        st.write("### Resultado de consultas CCMA (vista previa)")
-                        st.dataframe(result_ccma_df.head(50), use_container_width=True)
-                        if movimientos_requested_any or not movimientos_df.empty:
-                            st.write("### Movimientos devueltos (vista previa)")
-                            st.dataframe(movimientos_df.head(50), use_container_width=True)
-                        xlsx_bytes = build_ccma_excel(
-                            result_ccma_df,
-                            movimientos_df,
-                            include_movements_sheet=movimientos_requested_any
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"mis_facilidades_{last_fac_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_fac_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_mis_facilidades_{last_fac_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_fac_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            st.markdown("#### Consulta masiva Mis Facilidades")
+            st.write("Subí un Excel con: **cuit_login**, **clave**, **cuit_representado** (opcional), **denominacion** (opcional)")
+            fac_file = st.file_uploader("Archivo Excel", type=["xlsx"], key="fac_file_upload")
+            if fac_file:
+                try:
+                    df_fac = pd.read_excel(fac_file, dtype=str).fillna("")
+                except Exception as e:
+                    st.error(f"Error leyendo Excel: {e}")
+                    df_fac = pd.DataFrame()
+                df_fac.columns = [c.strip().lower() for c in df_fac.columns]
+                required = ["cuit_login", "clave"]
+                missing = [c for c in required if c not in df_fac.columns]
+                if missing:
+                    st.error(f"Faltan columnas: {', '.join(missing)}")
+                else:
+                    st.success(f"Filas leídas: {len(df_fac)}")
+                    with st.expander("👀 Vista previa"):
+                        st.dataframe(df_fac.head(10), use_container_width=True)
+                    if st.button("Procesar Mis Facilidades masivo", key="btn_fac_masivo"):
+                        headers_local = build_headers(x_api_key, header_email)
+                        out_rows = []
+                        progress = st.progress(0)
+                        status_ph = st.empty()
+                        for idx, row in df_fac.reset_index(drop=True).iterrows():
+                            cuit_repr = row.get("cuit_representado", "").strip()
+                            denom = row.get("denominacion", "").strip()
+                            status_ph.info(f"Procesando {idx+1}/{len(df_fac)} — {row['cuit_login']}")
+                            payload = {
+                                "cuit_login": row["cuit_login"].strip(),
+                                "clave": row["clave"],
+                                "cuit_representado": cuit_repr if cuit_repr else None,
+                                "denominacion": denom if denom else None,
+                                "carga_minio": bool(fac_minio),
+                                "proxy_request": bool(fac_proxy)
+                            }
+                            resp = call_mis_facilidades_consulta(base_url, headers_local, payload)
+                            out_rows.append({
+                                "cuit_login": row["cuit_login"],
+                                "cuit_representado": cuit_repr,
+                                "http_status": resp.get("http_status"),
+                                "data": json.dumps(resp.get("data"), ensure_ascii=False)
+                            })
+                            progress.progress(int((idx + 1) / len(df_fac) * 100))
+                        status_ph.success("Procesamiento finalizado.")
+                        result_fac = pd.DataFrame(out_rows)
+                        st.dataframe(result_fac.head(50), use_container_width=True)
+                        xlsx_fac = make_output_excel(result_fac, sheet_name="Mis_Facilidades")
+                        
+                        col_dl1, col_dl2 = st.columns(2)
+                        with col_dl1:
+                            st.download_button(
+                                label="⬇️ Descargar Excel Mis Facilidades",
+                                data=xlsx_fac,
+                                file_name=f"consolidado_mis_facilidades_{date.today().strftime('%Y%m%d')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_fac_masivo"
+                            )
+                        with col_dl2:
+                            if st.button("📦 Generar ZIP con archivos MinIO", key="btn_fac_zip"):
+                                with st.spinner("Descargando archivos desde MinIO..."):
+                                    zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                                        out_rows,
+                                        url_field="data",
+                                        contributor_field="cuit_representado"
+                                    )
+                                st.success(f"ZIP generado: {len(log_df)} operaciones")
+                                st.download_button(
+                                    label="⬇️ Descargar ZIP de archivos",
+                                    data=zip_bytes,
+                                    file_name=f"mis_facilidades_archivos_{date.today().strftime('%Y%m%d')}.zip",
+                                    mime="application/zip",
+                                    key="download_fac_zip_files"
+                                )
+                                log_xlsx = make_output_excel(log_df, sheet_name="Log_Descargas")
+                                st.download_button(
+                                    label="📋 Descargar Log",
+                                    data=log_xlsx,
+                                    file_name=f"log_mis_facilidades_{date.today().strftime('%Y%m%d')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="download_fac_log"
+                                )
+
+    # -------------------------------------------------------------
+    # TAB: Aportes en Línea
+    # -------------------------------------------------------------
+    with tab_aportes_linea:
+        st.markdown("### Aportes en Línea")
+        st.write("Consulta aportes y contribuciones en línea. Modo individual o masivo (Excel).")
+        ap_mode = st.radio("Modo de consulta", ["Individual", "Masiva"], key="ap_mode", horizontal=True)
+        ap_minio = st.checkbox("Archivo histórico MinIO", value=True, key="ap_minio_option")
+        ap_b64 = st.checkbox("Archivo histórico base64", value=False, key="ap_b64_option")
+        ap_proxy = st.checkbox("Usar proxy_request", value=False, key="ap_proxy_option")
+        
+        if ap_mode == "Individual":
+            ap_cuit_login = st.text_input("CUIT login", value="", key="ap_cuit_login_ind")
+            ap_clave = st.text_input("Clave", value="", type="password", key="ap_clave_ind")
+            ap_cuit_repr = st.text_input("CUIT representado (opcional)", value="", key="ap_cuit_repr_ind")
+            
+            if st.button("Consultar Aportes en Línea", key="btn_ap_consulta_ind"):
+                if not (ap_cuit_login.strip() and ap_clave.strip()):
+                    st.warning("Completá CUIT login y clave.")
+                else:
+                    headers_local = build_headers(x_api_key, header_email)
+                    payload_ap = {
+                        "cuit_login": ap_cuit_login.strip(),
+                        "clave": ap_clave,
+                        "cuit_representado": ap_cuit_repr.strip() if ap_cuit_repr.strip() else None,
+                        "archivo_historico_b64": bool(ap_b64),
+                        "archivo_historico_minio": bool(ap_minio),
+                        "proxy_request": bool(ap_proxy)
+                    }
+                    with st.spinner("Consultando Aportes en Línea..."):
+                        resp_ap = call_aportes_en_linea_consulta(base_url, headers_local, payload_ap)
+                    st.info(f"HTTP status: {resp_ap.get('http_status')}")
+                    st.json(resp_ap.get("data"))
+                    cuit_id = ap_cuit_repr.strip() if ap_cuit_repr.strip() else ap_cuit_login.strip()
+                    st.session_state["ap_last_response"] = resp_ap.get("data")
+                    st.session_state["ap_last_cuit_id"] = cuit_id
+
+            last_ap_data = st.session_state.get("ap_last_response")
+            last_ap_cuit = st.session_state.get("ap_last_cuit_id", "").strip()
+            if last_ap_data is not None and last_ap_cuit:
+                # Botón para descargar ZIP con archivos de MinIO
+                if st.button("📦 Generar ZIP con archivos MinIO", key="btn_ap_zip_ind"):
+                    with st.spinner("Descargando archivos desde MinIO..."):
+                        zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                            [{"cuit_representado": last_ap_cuit, "data": json.dumps(last_ap_data, ensure_ascii=False)}],
+                            url_field="data",
+                            contributor_field="cuit_representado"
                         )
-                        st.download_button(
-                            label="⬇️ Descargar Excel de resultados CCMA",
-                            data=xlsx_bytes,
-                            file_name=f"consolidado_ccma_{date.today().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="download_ccma_masivo"
-                        )
+                    if len(log_df) > 0:
+                        st.success(f"ZIP generado: {len(log_df)} operaciones")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label="⬇️ Descargar ZIP",
+                                data=zip_bytes,
+                                file_name=f"aportes_linea_{last_ap_cuit}_{date.today().strftime('%Y%m%d')}.zip",
+                                mime="application/zip",
+                                key="download_ap_zip_ind"
+                            )
+                        with col2:
+                            log_xlsx = make_output_excel(log_df, sheet_name="Log")
+                            st.download_button(
+                                label="📋 Log",
+                                data=log_xlsx,
+                                file_name=f"log_aportes_linea_{last_ap_cuit}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_ap_log_ind"
+                            )
+                    else:
+                        st.info("No se encontraron URLs de MinIO en la respuesta.")
+        else:
+            st.markdown("#### Consulta masiva Aportes en Línea")
+            st.write("Subí un Excel con: **cuit_login**, **clave**, **cuit_representado** (opcional)")
+            ap_file = st.file_uploader("Archivo Excel", type=["xlsx"], key="ap_file_upload")
+            if ap_file:
+                try:
+                    df_ap = pd.read_excel(ap_file, dtype=str).fillna("")
+                except Exception as e:
+                    st.error(f"Error leyendo Excel: {e}")
+                    df_ap = pd.DataFrame()
+                df_ap.columns = [c.strip().lower() for c in df_ap.columns]
+                required = ["cuit_login", "clave"]
+                missing = [c for c in required if c not in df_ap.columns]
+                if missing:
+                    st.error(f"Faltan columnas: {', '.join(missing)}")
+                else:
+                    st.success(f"Filas leídas: {len(df_ap)}")
+                    with st.expander("👀 Vista previa"):
+                        st.dataframe(df_ap.head(10), use_container_width=True)
+                    if st.button("Procesar Aportes en Línea masivo", key="btn_ap_masivo"):
+                        headers_local = build_headers(x_api_key, header_email)
+                        out_rows = []
+                        progress = st.progress(0)
+                        status_ph = st.empty()
+                        for idx, row in df_ap.reset_index(drop=True).iterrows():
+                            cuit_repr = row.get("cuit_representado", "").strip()
+                            status_ph.info(f"Procesando {idx+1}/{len(df_ap)} — {row['cuit_login']}")
+                            payload = {
+                                "cuit_login": row["cuit_login"].strip(),
+                                "clave": row["clave"],
+                                "cuit_representado": cuit_repr if cuit_repr else None,
+                                "archivo_historico_b64": bool(ap_b64),
+                                "archivo_historico_minio": bool(ap_minio),
+                                "proxy_request": bool(ap_proxy)
+                            }
+                            resp = call_aportes_en_linea_consulta(base_url, headers_local, payload)
+                            out_rows.append({
+                                "cuit_login": row["cuit_login"],
+                                "cuit_representado": cuit_repr,
+                                "http_status": resp.get("http_status"),
+                                "data": json.dumps(resp.get("data"), ensure_ascii=False)
+                            })
+                            progress.progress(int((idx + 1) / len(df_ap) * 100))
+                        status_ph.success("Procesamiento finalizado.")
+                        result_ap = pd.DataFrame(out_rows)
+                        st.dataframe(result_ap.head(50), use_container_width=True)
+                        xlsx_ap = make_output_excel(result_ap, sheet_name="Aportes_Linea")
+                        
+                        col_dl1, col_dl2 = st.columns(2)
+                        with col_dl1:
+                            st.download_button(
+                                label="⬇️ Descargar Excel Aportes en Línea",
+                                data=xlsx_ap,
+                                file_name=f"consolidado_aportes_linea_{date.today().strftime('%Y%m%d')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_ap_masivo"
+                            )
+                        with col_dl2:
+                            if st.button("📦 Generar ZIP con archivos MinIO", key="btn_ap_zip"):
+                                with st.spinner("Descargando archivos desde MinIO..."):
+                                    zip_bytes, log_df = download_minio_to_zip_by_contributor(
+                                        out_rows,
+                                        url_field="data",
+                                        contributor_field="cuit_representado"
+                                    )
+                                st.success(f"ZIP generado: {len(log_df)} operaciones")
+                                st.download_button(
+                                    label="⬇️ Descargar ZIP de archivos",
+                                    data=zip_bytes,
+                                    file_name=f"aportes_linea_archivos_{date.today().strftime('%Y%m%d')}.zip",
+                                    mime="application/zip",
+                                    key="download_ap_zip_files"
+                                )
+                                log_xlsx = make_output_excel(log_df, sheet_name="Log_Descargas")
+                                st.download_button(
+                                    label="📋 Descargar Log",
+                                    data=log_xlsx,
+                                    file_name=f"log_aportes_linea_{date.today().strftime('%Y%m%d')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key="download_ap_log"
+                                )
 
     # -------------------------------------------------------------
     # Subtab: Consulta Apócrifos (individual y masivo)
