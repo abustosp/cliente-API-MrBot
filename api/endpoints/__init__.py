@@ -1,0 +1,20 @@
+from api.endpoints.mis_comprobantes import call_consulta
+from api.endpoints.rcel import call_rcel_consulta
+from api.endpoints.sct import call_sct_consulta
+from api.endpoints.ccma import call_ccma_consulta
+from api.endpoints.apoc import call_apoc_consulta
+from api.endpoints.consulta_cuit import call_cuit_individual, call_cuit_masivo
+from api.endpoints.mis_retenciones import call_mis_retenciones_consulta
+from api.endpoints.sifere import call_sifere_consulta
+from api.endpoints.declaracion_linea import call_declaracion_en_linea_consulta
+from api.endpoints.mis_facilidades import call_mis_facilidades_consulta
+from api.endpoints.aportes_linea import call_aportes_en_linea_consulta
+from api.endpoints.usuarios import call_create_user_api, call_reset_api_key, call_consultas_disponibles
+from api.endpoints.pago_devoluciones import call_pago_devoluciones_consulta
+from api.endpoints.hacienda import call_hacienda_consulta
+from api.endpoints.liquidacion_granos import call_liquidacion_granos_consulta
+from api.endpoints.portal_iva import call_portal_iva_consulta
+from api.endpoints.ret_per_provinciales import call_arba_consulta, call_agip_consulta, call_misiones_consulta
+from api.endpoints.srt_alicuotas import call_srt_alicuotas_consulta
+from api.endpoints.bcra import run_bcra_operation, flatten_bcra_results, get_bcra_operation_choices
+from api.endpoints.procesar_pem import call_procesar_pem, build_pem_excel
