@@ -66,6 +66,10 @@ with st.sidebar:
     )
     x_api_key = st.text_input("x-api-key (opcional, header)", value=default_api_key, type="password")
     header_email = st.text_input("email (opcional, header)", value=default_email)
+    st.divider()
+    st.caption("Timeouts globales para las llamadas HTTP")
+    timeout_post = st.number_input("Timeout POST (segundos)", min_value=10, value=1200, step=10, help="Timeout para peticiones POST a la API")
+    timeout_get = st.number_input("Timeout GET (segundos)", min_value=10, value=1200, step=10, help="Timeout para peticiones GET a la API")
 
 REQUIRED_COLS = ["cuit_inicio_sesion", "nombre_representado", "cuit_representado", "contrasena"]
 
@@ -130,7 +134,7 @@ with subtab_user_create:
         else:
             payload_create = {"mail": user_email_create.strip()}
             with st.spinner("Creando usuario..."):
-                resp_create = call_create_user_api(base_url, payload_create)
+                resp_create = call_create_user_api(base_url, payload_create, timeout_sec=timeout_post)
             st.info(f"HTTP status: {resp_create.get('http_status')}")
             st.json(resp_create.get("data"))
 
@@ -145,7 +149,7 @@ with subtab_user_reset:
         else:
             payload_reset = {"mail": user_email_reset.strip()}
             with st.spinner("Reseteando API key..."):
-                resp_reset = call_reset_api_key(base_url, payload_reset)
+                resp_reset = call_reset_api_key(base_url, payload_reset, timeout_sec=timeout_post)
             st.info(f"HTTP status: {resp_reset.get('http_status')}")
             st.json(resp_reset.get("data"))
 
@@ -221,7 +225,7 @@ with tab1:
                     "carga_s3": bool(carga_s3), "carga_minio": bool(carga_minio),
                     "carga_json": bool(carga_json), "b64": False
                 }
-                resp = call_consulta(base_url, headers, payload)
+                resp = call_consulta(base_url, headers, payload, timeout_sec=timeout_post)
                 http_status = resp.get("http_status")
                 data = resp.get("data", {})
                 success = data.get("success") if isinstance(data, dict) else None
@@ -270,7 +274,7 @@ with tab2:
         if not q_email.strip():
             st.warning("Ingresa un email para consultar.")
         else:
-            http_status, data_json, consultas_disponibles, err = call_consultas_disponibles(base_url, q_email.strip(), headers)
+            http_status, data_json, consultas_disponibles, err = call_consultas_disponibles(base_url, q_email.strip(), headers, timeout_sec=timeout_get)
             if err:
                 st.error(err)
             else:
@@ -372,7 +376,7 @@ with tab_rcel:
                     "b64_pdf": bool(rcel_b64_pdf), "minio_upload": bool(rcel_minio)
                 }
                 with st.spinner("Consultando RCEL..."):
-                    resp_rcel = call_rcel_consulta(base_url, headers_local, payload_rcel)
+                    resp_rcel = call_rcel_consulta(base_url, headers_local, payload_rcel, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_rcel.get('http_status')}")
                 st.json(resp_rcel.get("data"))
                 st.session_state["rcel_last_response"] = resp_rcel.get("data")
@@ -437,7 +441,7 @@ with tab_sct:
                     "proxy_request": bool(sct_proxy)
                 }
                 with st.spinner("Consultando SCT..."):
-                    resp_sct = call_sct_consulta(base_url, headers_local, payload_sct)
+                    resp_sct = call_sct_consulta(base_url, headers_local, payload_sct, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_sct.get('http_status')}")
                 data_sct = resp_sct.get("data")
                 st.json(data_sct)
@@ -507,7 +511,7 @@ with tab_ccma:
                     "proxy_request": bool(ccma_proxy), "movimientos": bool(ccma_movimientos)
                 }
                 with st.spinner("Consultando CCMA..."):
-                    resp_ccma = call_ccma_consulta(base_url, headers_local, payload_ccma)
+                    resp_ccma = call_ccma_consulta(base_url, headers_local, payload_ccma, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_ccma.get('http_status')}")
                 data_ccma = resp_ccma.get("data")
                 st.json(data_ccma)
@@ -574,7 +578,7 @@ with tab_mis_retenciones:
                     "carga_minio": bool(mr_minio), "proxy_request": bool(mr_proxy)
                 }
                 with st.spinner("Consultando Mis Retenciones..."):
-                    resp_mr = call_mis_retenciones_consulta(base_url, headers_local, payload_mr)
+                    resp_mr = call_mis_retenciones_consulta(base_url, headers_local, payload_mr, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_mr.get('http_status')}")
                 st.json(resp_mr.get("data"))
                 cuit_id = mr_cuit_repr.strip() if mr_cuit_repr.strip() else mr_cuit_rep.strip()
@@ -633,7 +637,7 @@ with tab_sifere:
                     "carga_minio": bool(sifere_minio), "proxy_request": bool(sifere_proxy)
                 }
                 with st.spinner("Consultando SIFERE..."):
-                    resp_sifere = call_sifere_consulta(base_url, headers_local, payload_sifere)
+                    resp_sifere = call_sifere_consulta(base_url, headers_local, payload_sifere, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_sifere.get('http_status')}")
                 st.json(resp_sifere.get("data"))
                 st.session_state["sifere_last_response"] = resp_sifere.get("data")
@@ -690,7 +694,7 @@ with tab_declaracion_linea:
                     "carga_minio": bool(decl_minio), "proxy_request": bool(decl_proxy)
                 }
                 with st.spinner("Consultando Declaracion en Linea..."):
-                    resp_decl = call_declaracion_en_linea_consulta(base_url, headers_local, payload_decl)
+                    resp_decl = call_declaracion_en_linea_consulta(base_url, headers_local, payload_decl, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_decl.get('http_status')}")
                 st.json(resp_decl.get("data"))
                 cuit_id = decl_cuit_repr.strip() if decl_cuit_repr.strip() else decl_cuit_rep.strip()
@@ -752,7 +756,7 @@ with tab_declaracion_linea:
                             "periodo_hasta": decl_periodo_hasta.strip(),
                             "carga_minio": bool(decl_minio), "proxy_request": bool(decl_proxy)
                         }
-                        resp = call_declaracion_en_linea_consulta(base_url, headers_local, payload)
+                        resp = call_declaracion_en_linea_consulta(base_url, headers_local, payload, timeout_sec=timeout_post)
                         out_rows.append({"cuit_representante": row["cuit_representante"], "cuit_representado": cuit_repr, "http_status": resp.get("http_status"), "data": json.dumps(resp.get("data"), ensure_ascii=False)})
                         progress.progress(int((idx + 1) / len(df_decl) * 100))
                     status_ph.success("Procesamiento finalizado.")
@@ -798,7 +802,7 @@ with tab_mis_facilidades:
                     "carga_minio": bool(fac_minio), "proxy_request": bool(fac_proxy)
                 }
                 with st.spinner("Consultando Mis Facilidades..."):
-                    resp_fac = call_mis_facilidades_consulta(base_url, headers_local, payload_fac)
+                    resp_fac = call_mis_facilidades_consulta(base_url, headers_local, payload_fac, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_fac.get('http_status')}")
                 st.json(resp_fac.get("data"))
                 cuit_id = fac_cuit_repr.strip() if fac_cuit_repr.strip() else fac_cuit_login.strip()
@@ -857,7 +861,7 @@ with tab_mis_facilidades:
                             "denominacion": denom if denom else None,
                             "carga_minio": bool(fac_minio), "proxy_request": bool(fac_proxy)
                         }
-                        resp = call_mis_facilidades_consulta(base_url, headers_local, payload)
+                        resp = call_mis_facilidades_consulta(base_url, headers_local, payload, timeout_sec=timeout_post)
                         out_rows.append({"cuit_login": row["cuit_login"], "cuit_representado": cuit_repr, "http_status": resp.get("http_status"), "data": json.dumps(resp.get("data"), ensure_ascii=False)})
                         progress.progress(int((idx + 1) / len(df_fac) * 100))
                     status_ph.success("Procesamiento finalizado.")
@@ -904,7 +908,7 @@ with tab_aportes_linea:
                     "proxy_request": bool(ap_proxy)
                 }
                 with st.spinner("Consultando Aportes en Linea..."):
-                    resp_ap = call_aportes_en_linea_consulta(base_url, headers_local, payload_ap)
+                    resp_ap = call_aportes_en_linea_consulta(base_url, headers_local, payload_ap, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_ap.get('http_status')}")
                 st.json(resp_ap.get("data"))
                 cuit_id = ap_cuit_repr.strip() if ap_cuit_repr.strip() else ap_cuit_login.strip()
@@ -963,7 +967,7 @@ with tab_aportes_linea:
                             "archivo_historico_minio": bool(ap_minio),
                             "proxy_request": bool(ap_proxy)
                         }
-                        resp = call_aportes_en_linea_consulta(base_url, headers_local, payload)
+                        resp = call_aportes_en_linea_consulta(base_url, headers_local, payload, timeout_sec=timeout_post)
                         out_rows.append({"cuit_login": row["cuit_login"], "cuit_representado": cuit_repr, "http_status": resp.get("http_status"), "data": json.dumps(resp.get("data"), ensure_ascii=False)})
                         progress.progress(int((idx + 1) / len(df_ap) * 100))
                     status_ph.success("Procesamiento finalizado.")
@@ -998,7 +1002,7 @@ with tab_apoc:
             else:
                 headers_local = build_headers(x_api_key, header_email)
                 with st.spinner("Consultando apocrifo individual..."):
-                    resp_apoc = call_apoc_consulta(base_url, headers_local, apoc_cuit.strip())
+                    resp_apoc = call_apoc_consulta(base_url, headers_local, apoc_cuit.strip(), timeout_sec=timeout_get)
                 st.info(f"HTTP status: {resp_apoc.get('http_status')}")
                 st.json(resp_apoc.get("data"))
     else:
@@ -1014,7 +1018,7 @@ with tab_apoc:
                 progress = st.progress(0)
                 with st.spinner("Consultando apocrifos masivos..."):
                     for idx, cuit in enumerate(cuits_list):
-                        resp = call_apoc_consulta(base_url, headers_local, cuit)
+                        resp = call_apoc_consulta(base_url, headers_local, cuit, timeout_sec=timeout_get)
                         http_status = resp.get("http_status")
                         data = resp.get("data")
                         es_apoc = None; fecha_apoc = None; fecha_publicacion = None
@@ -1047,7 +1051,7 @@ with tab_cuit:
                 headers_local = build_headers(x_api_key, header_email)
                 payload_cuit_ind = {"cuit": cuit_individual.strip()}
                 with st.spinner("Consultando CUIT individual..."):
-                    resp_cuit_ind = call_cuit_individual(base_url, headers_local, payload_cuit_ind)
+                    resp_cuit_ind = call_cuit_individual(base_url, headers_local, payload_cuit_ind, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_cuit_ind.get('http_status')}")
                 st.json(resp_cuit_ind.get("data"))
     else:
@@ -1061,7 +1065,7 @@ with tab_cuit:
                 headers_local = build_headers(x_api_key, header_email)
                 payload_cuit_mass = {"cuits": cuits_list}
                 with st.spinner("Consultando CUITs masivos..."):
-                    resp_cuit_mass = call_cuit_masivo(base_url, headers_local, payload_cuit_mass)
+                    resp_cuit_mass = call_cuit_masivo(base_url, headers_local, payload_cuit_mass, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_cuit_mass.get('http_status')}")
                 st.json(resp_cuit_mass.get("data"))
 
@@ -1095,7 +1099,7 @@ with tab_pago_devoluciones:
                     "carga_minio": bool(pd_minio), "proxy_request": bool(pd_proxy)
                 }
                 with st.spinner("Consultando Pago y Devoluciones..."):
-                    resp_pd = call_pago_devoluciones_consulta(base_url, headers_local, payload_pd)
+                    resp_pd = call_pago_devoluciones_consulta(base_url, headers_local, payload_pd, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_pd.get('http_status')}")
                 st.json(resp_pd.get("data"))
                 cuit_id = pd_cuit_repr.strip() if pd_cuit_repr.strip() else pd_cuit_rep.strip()
@@ -1152,7 +1156,7 @@ with tab_hacienda:
                     "minio_upload": bool(ha_minio), "proxy_request": bool(ha_proxy)
                 }
                 with st.spinner("Consultando Hacienda..."):
-                    resp_ha = call_hacienda_consulta(base_url, headers_local, payload_ha)
+                    resp_ha = call_hacienda_consulta(base_url, headers_local, payload_ha, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_ha.get('http_status')}")
                 st.json(resp_ha.get("data"))
                 st.session_state["ha_last_response"] = resp_ha.get("data")
@@ -1209,7 +1213,7 @@ with tab_liquidacion_granos:
                     "minio_upload": bool(lg_minio), "proxy_request": bool(lg_proxy)
                 }
                 with st.spinner("Consultando Liquidacion Granos..."):
-                    resp_lg = call_liquidacion_granos_consulta(base_url, headers_local, payload_lg)
+                    resp_lg = call_liquidacion_granos_consulta(base_url, headers_local, payload_lg, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_lg.get('http_status')}")
                 st.json(resp_lg.get("data"))
                 cuit_id = lg_cuit_repr.strip() if lg_cuit_repr.strip() else lg_cuit_rep.strip()
@@ -1295,7 +1299,7 @@ with tab_portal_iva:
                     "proxy_request": bool(piva_proxy)
                 }
                 with st.spinner("Consultando Portal IVA..."):
-                    resp_piva = call_portal_iva_consulta(base_url, headers_local, payload_piva)
+                    resp_piva = call_portal_iva_consulta(base_url, headers_local, payload_piva, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_piva.get('http_status')}")
                 st.json(resp_piva.get("data"))
                 st.session_state["piva_last_response"] = resp_piva.get("data")
@@ -1351,7 +1355,7 @@ with tab_ret_provinciales:
                         "carga_minio": bool(arba_minio), "proxy_request": bool(arba_proxy)
                     }
                     with st.spinner("Consultando ARBA..."):
-                        resp_arba = call_arba_consulta(base_url, headers_local, payload_arba)
+                        resp_arba = call_arba_consulta(base_url, headers_local, payload_arba, timeout_sec=timeout_post)
                     st.info(f"HTTP status: {resp_arba.get('http_status')}")
                     st.json(resp_arba.get("data"))
                     st.session_state["arba_last_response"] = resp_arba.get("data")
@@ -1404,7 +1408,7 @@ with tab_ret_provinciales:
                         "carga_minio": bool(agip_minio), "proxy_request": bool(agip_proxy)
                     }
                     with st.spinner("Consultando AGIP..."):
-                        resp_agip = call_agip_consulta(base_url, headers_local, payload_agip)
+                        resp_agip = call_agip_consulta(base_url, headers_local, payload_agip, timeout_sec=timeout_post)
                     st.info(f"HTTP status: {resp_agip.get('http_status')}")
                     st.json(resp_agip.get("data"))
                     st.session_state["agip_last_response"] = resp_agip.get("data")
@@ -1458,7 +1462,7 @@ with tab_ret_provinciales:
                         "carga_minio": bool(mis_minio), "proxy_request": bool(mis_proxy)
                     }
                     with st.spinner("Consultando Misiones..."):
-                        resp_mis = call_misiones_consulta(base_url, headers_local, payload_mis)
+                        resp_mis = call_misiones_consulta(base_url, headers_local, payload_mis, timeout_sec=timeout_post)
                     st.info(f"HTTP status: {resp_mis.get('http_status')}")
                     st.json(resp_mis.get("data"))
                     st.session_state["mis_last_response"] = resp_mis.get("data")
@@ -1513,7 +1517,7 @@ with tab_srt_alicuotas:
                     "proxy_request": bool(srt_proxy)
                 }
                 with st.spinner("Consultando SRT Alicuotas..."):
-                    resp_srt = call_srt_alicuotas_consulta(base_url, headers_local, payload_srt)
+                    resp_srt = call_srt_alicuotas_consulta(base_url, headers_local, payload_srt, timeout_sec=timeout_post)
                 st.info(f"HTTP status: {resp_srt.get('http_status')}")
                 data_srt = resp_srt.get("data")
                 st.json(data_srt)
@@ -1561,7 +1565,7 @@ with tab_srt_alicuotas:
                             "cuits_consulta": cuits,
                             "proxy_request": proxy
                         }
-                        resp = call_srt_alicuotas_consulta(base_url, headers_local, payload)
+                        resp = call_srt_alicuotas_consulta(base_url, headers_local, payload, timeout_sec=timeout_post)
                         data = resp.get("data")
                         if isinstance(data, dict):
                             consultas = data.get("consultas")
